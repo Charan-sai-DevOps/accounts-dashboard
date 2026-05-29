@@ -6,6 +6,7 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingMail, setTestingMail] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,6 +71,31 @@ export function SettingsPage() {
     }
   };
 
+  const handleSendTestMail = async () => {
+    setTestingMail(true);
+    setStatusMessage(null);
+
+    try {
+      const response = await fetch("/api/mail/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: settings.email }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to send test email.");
+      }
+
+      setStatusMessage("Test email sent successfully!");
+    } catch (error) {
+      console.error(error);
+      setStatusMessage(error instanceof Error ? error.message : "Failed to send test email.");
+    } finally {
+      setTestingMail(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
       <div>
@@ -94,11 +120,37 @@ export function SettingsPage() {
           <div className="flex flex-col gap-4">
             <div>
               <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
+                Full Name
+              </label>
+              <input
+                value={settings.fullName}
+                onChange={(event) => setSettings((prev) => ({ ...prev, fullName: event.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl outline-none"
+                style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
                 Email Address
               </label>
               <input
                 value={settings.email}
                 onChange={(event) => setSettings((prev) => ({ ...prev, email: event.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl outline-none"
+                style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
+                Company
+              </label>
+              <input
+                value={settings.company}
+                onChange={(event) => setSettings((prev) => ({ ...prev, company: event.target.value }))}
                 className="w-full px-3 py-2.5 rounded-xl outline-none"
                 style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
                 onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
@@ -118,7 +170,7 @@ export function SettingsPage() {
                 opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? "Saving..." : "Save Settings"}
+              {saving ? "Saving..." : "Save Profile"}
             </button>
           </div>
         </div>
@@ -154,17 +206,35 @@ export function SettingsPage() {
                       className="sr-only peer"
                     />
                     <div
-                      className="w-10 h-5 rounded-full peer-checked:bg-indigo-500 transition-colors"
-                      style={{ background: "#e2e8f0" }}
+                      className="w-10 h-5 rounded-full transition-colors"
+                      style={{ background: checked ? "#10b981" : "#e2e8f0" }}
                     />
                     <div
-                      className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-all peer-checked:translate-x-5"
-                      style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}
+                      className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                      style={{
+                        transform: checked ? "translateX(1.25rem)" : "translateX(0)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                      }}
                     />
                   </div>
                 </label>
               );
             })}
+            <button
+              type="button"
+              onClick={handleSendTestMail}
+              disabled={testingMail || !settings.email}
+              className="px-4 py-2.5 rounded-xl text-white"
+              style={{
+                background: testingMail ? "#94a3b8" : "linear-gradient(135deg, #f59e0b, #f97316)",
+                fontSize: "13px",
+                fontWeight: 600,
+                marginTop: "4px",
+                opacity: testingMail || !settings.email ? 0.6 : 1,
+              }}
+            >
+              {testingMail ? "Sending..." : "Send Test Mail"}
+            </button>
           </div>
         </div>
 

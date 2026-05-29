@@ -11,12 +11,16 @@ export interface NotificationSettings {
 
 export interface AppSettings {
   email: string;
+  fullName: string;
+  company: string;
   reminders: ReminderSettings;
   notifications: NotificationSettings;
 }
 
 export const defaultAppSettings: AppSettings = {
   email: "",
+  fullName: "",
+  company: "",
   reminders: {
     before7Days: true,
     before3Days: true,

@@ -5,6 +5,8 @@ const SETTINGS_COLLECTION = "settings";
 
 const defaultAppSettings = {
   email: "",
+  fullName: "",
+  company: "",
   reminders: {
     before7Days: true,
     before3Days: true,
@@ -19,6 +21,8 @@ const defaultAppSettings = {
 function normalizeSettings(data: any) {
   return {
     email: typeof data?.email === "string" ? data.email : "",
+    fullName: typeof data?.fullName === "string" ? data.fullName : "",
+    company: typeof data?.company === "string" ? data.company : "",
     reminders: {
       before7Days: Boolean(data?.reminders?.before7Days ?? true),
       before3Days: Boolean(data?.reminders?.before3Days ?? true),
