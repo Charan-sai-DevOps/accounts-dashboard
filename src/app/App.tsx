@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { Subscriptions } from "./components/Subscriptions";
@@ -92,27 +93,30 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-      <Sidebar activePage={page} onNavigate={setPage} />
-      <main className="flex-1 overflow-y-auto">
-        {page === "dashboard" && (
-          <Dashboard
-            subscriptions={subscriptions}
-            onNavigate={(p) => setPage(p)}
-          />
-        )}
-        {page === "subscriptions" && (
-          <Subscriptions
-            subscriptions={subscriptions}
-            onAdd={handleAdd}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-          />
-        )}
-        {page === "reports" && <Reports subscriptions={subscriptions} />}
-        {page === "renewals" && <Renewals subscriptions={subscriptions} />}
-        {page === "settings" && <SettingsPage />}
-      </main>
-    </div>
+    <>
+      <div className="flex h-screen overflow-hidden" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+        <Sidebar activePage={page} onNavigate={setPage} />
+        <main className="flex-1 overflow-y-auto">
+          {page === "dashboard" && (
+            <Dashboard
+              subscriptions={subscriptions}
+              onNavigate={(p) => setPage(p)}
+            />
+          )}
+          {page === "subscriptions" && (
+            <Subscriptions
+              subscriptions={subscriptions}
+              onAdd={handleAdd}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          )}
+          {page === "reports" && <Reports subscriptions={subscriptions} />}
+          {page === "renewals" && <Renewals subscriptions={subscriptions} />}
+          {page === "settings" && <SettingsPage />}
+        </main>
+      </div>
+      <Analytics />
+    </>
   );
 }
