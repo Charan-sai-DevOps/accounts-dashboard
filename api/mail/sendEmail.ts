@@ -1,24 +1,34 @@
 import nodemailer from "nodemailer";
 
-const host = process.env.SMTP_HOST;
-const port = Number(process.env.SMTP_PORT || "587");
-const user = process.env.SMTP_USER;
-const pass = process.env.SMTP_PASS;
 const from = process.env.EMAIL_FROM || "no-reply@example.com";
+let transporter: any = null;
 
-if (!host || !user || !pass) {
-  throw new Error("Missing SMTP environment variables. Please set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS.");
+function getTransporter() {
+  if (transporter) {
+    return transporter;
+  }
+
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || "587");
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !user || !pass) {
+    throw new Error("Missing SMTP environment variables. Please set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS.");
+  }
+
+  transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: {
+      user,
+      pass,
+    },
+  });
+
+  return transporter;
 }
-
-const transporter = nodemailer.createTransport({
-  host,
-  port,
-  secure: port === 465,
-  auth: {
-    user,
-    pass,
-  },
-});
 
 export async function sendEmail({
   to,
@@ -35,7 +45,9 @@ export async function sendEmail({
     throw new Error("Email recipient is required.");
   }
 
-  await transporter.sendMail({
+  const transport = getTransporter();
+
+  await transport.sendMail({
     from,
     to,
     subject,
