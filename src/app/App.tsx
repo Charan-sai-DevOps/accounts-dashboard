@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { Subscriptions } from "./components/Subscriptions";
@@ -113,6 +114,7 @@ export default function App() {
         {page === "renewals" && <Renewals subscriptions={subscriptions} />}
         {page === "settings" && <SettingsPage />}
       </main>
+      <SpeedInsights />
     </div>
   );
 }
