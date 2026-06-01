@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Bell, CheckCircle, AlertTriangle, Clock } from "lucide-react";
-import { Subscription, getDaysUntilExpiry } from "../data/subscriptions";
+import { Subscription, getDaysUntilExpiry, getClearbitLogoUrl } from "../data/subscriptions";
 
 interface RenewalsProps {
   subscriptions: Subscription[];
@@ -8,6 +8,11 @@ interface RenewalsProps {
 
 export function Renewals({ subscriptions }: RenewalsProps) {
   const [view, setView] = useState<"upcoming" | "history">("upcoming");
+  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
+
+  const handleLogoError = (subscriptionId: string) => {
+    setFailedLogos((prev) => new Set(prev).add(subscriptionId));
+  };
 
   const sorted = useMemo(
     () => [...subscriptions].sort((a, b) => getDaysUntilExpiry(a.expiryDate) - getDaysUntilExpiry(b.expiryDate)),
@@ -75,8 +80,26 @@ export function Renewals({ subscriptions }: RenewalsProps) {
         }}
       >
         <div className="flex items-center gap-4">
-          <div className="w-11 h-11 rounded-[16px] flex items-center justify-center text-white" style={{ background: sub.color, fontSize: "11px", fontWeight: 700 }}>
-            {sub.logo}
+          <div
+            className="w-11 h-11 rounded-[16px] flex items-center justify-center text-white relative flex-shrink-0"
+            style={{
+              background: failedLogos.has(sub.id) ? sub.color : "white",
+              backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform)}')` : "none",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            {failedLogos.has(sub.id) ? (
+              <span style={{ fontSize: "10px", fontWeight: 700 }}>{sub.logo}</span>
+            ) : (
+              <img
+                src={getClearbitLogoUrl(sub.platform)}
+                alt={sub.platform}
+                className="w-full h-full object-contain rounded-[16px]"
+                style={{ padding: "1px" }}
+                onError={() => handleLogoError(sub.id)}
+              />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">

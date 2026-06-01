@@ -1,19 +1,24 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { TrendingUp, CreditCard, AlertTriangle, DollarSign, ArrowUpRight } from "lucide-react";
-import { Subscription, getMonthlyCost, getAnnualCost, getDaysUntilExpiry, categoryColors } from "../data/subscriptions";
+import { Subscription, getMonthlyCost, getAnnualCost, getDaysUntilExpiry, categoryColors, getClearbitLogoUrl } from "../data/subscriptions";
 
 interface DashboardProps {
-  subscriptions: Subscriptions[];
+  subscriptions: Subscription[];
   onNavigate: (page: "subscriptions" | "renewals") => void;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
+  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
+
+  const handleLogoError = (subscriptionId: string) => {
+    setFailedLogos((prev) => new Set(prev).add(subscriptionId));
+  };
   const totalMonthly = useMemo(
     () => subscriptions.reduce((sum, s) => sum + getMonthlyCost(s), 0),
     [subscriptions]
@@ -205,8 +210,26 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
               return (
                 <div key={sub.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "#f8fafc", border: "1px solid #f1f5f9" }}>
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white" style={{ background: sub.color, fontSize: "10px", fontWeight: 700 }}>
-                      {sub.logo}
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white relative flex-shrink-0"
+                      style={{
+                        background: failedLogos.has(sub.id) ? sub.color : "white",
+                        backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform)}')` : "none",
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }}
+                    >
+                      {failedLogos.has(sub.id) ? (
+                        <span style={{ fontSize: "9px", fontWeight: 700, color: "white" }}>{sub.logo}</span>
+                      ) : (
+                        <img
+                          src={getClearbitLogoUrl(sub.platform)}
+                          alt={sub.platform}
+                          className="w-full h-full object-contain rounded-xl"
+                          style={{ padding: "1px" }}
+                          onError={() => handleLogoError(sub.id)}
+                        />
+                      )}
                     </div>
                     <div>
                       <p style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{sub.platform}</p>
