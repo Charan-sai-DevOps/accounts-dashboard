@@ -86,7 +86,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
     const headers = ["Platform", "Plan", "Cost", "Cycle", "Monthly Cost", "Expiry Date", "Buyer", "Invoice", "Category"];
     const rows = subscriptions.map((s) => [
       s.platform, s.plan, s.cost, s.cycle, getMonthlyCost(s).toFixed(2),
-      s.expiryDate, s.buyer, s.invoiceFileName || "", s.category,
+      s.expiryDate, s.buyer, s.accountHolder || "", s.invoiceFileName || "", s.category,
     ]);
     const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -232,7 +232,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
         <table className="w-full" style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
-              {["Platform", "Plan", "Cost", "Cycle", "Expiry", "Buyer", "Invoice", "Status", "Actions"].map((h) => (
+              {["Platform", "Plan", "ACCOUNT HODER", "Cost", "Cycle", "Expiry", "Buyer", "Invoice", "Status", "Actions"].map((h) => (
                 <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "#000000", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
                   {h.toUpperCase()}
                 </th>
@@ -283,6 +283,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
                   <td style={{ padding: "14px 16px" }}>
                     <span className="px-2 py-0.5 rounded-md" style={{ fontSize: "12px", background: "#f1f5f9", color: "#475569" }}>{sub.plan}</span>
                   </td>
+                  <td style={{ padding: "14px 16px", fontSize: "13px", color: "#0f172a" }}>{sub.accountHolder}</td>
                   <td style={{ padding: "14px 16px", fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
                     ${sub.cost.toFixed(2)}
                   </td>
@@ -352,7 +353,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ padding: "48px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>
+                <td colSpan={10} style={{ padding: "48px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>
                   No subscriptions found
                 </td>
               </tr>
