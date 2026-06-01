@@ -605,7 +605,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                     {emailAuth && (
                       <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg self-start" style={{ background: "rgba(16,185,129,0.1)", display: "inline-flex" }}>
                         <Check size={12} style={{ color: "#10b981" }} />
-                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled � Charan@webomindapps.com</span>
+                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled Charan@webomindapps.com</span>
                       </div>
                     )}
                   </div>

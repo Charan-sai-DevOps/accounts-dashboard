@@ -23,6 +23,94 @@ export interface Subscription {
   active: boolean;
 }
 
+/**
+ * Platform name to domain mapping for Clearbit logo API
+ * Maps platform names to their corresponding domain for logo retrieval
+ */
+const platformDomainMap: Record<string, string> = {
+  Netflix: "netflix.com",
+  Spotify: "spotify.com",
+  "Adobe CC": "adobe.com",
+  GitHub: "github.com",
+  AWS: "aws.amazon.com",
+  Slack: "slack.com",
+  Zoom: "zoom.us",
+  Linear: "linear.app",
+  Figma: "figma.com",
+  "ChatGPT Plus": "openai.com",
+  "YouTube Premium": "youtube.com",
+  Notion: "notion.so",
+  "1Password": "1password.com",
+  Dropbox: "dropbox.com",
+  Gmail: "google.com",
+  Drive: "google.com",
+  Jira: "atlassian.com",
+  Asana: "asana.com",
+  Monday: "monday.com",
+  Canva: "canva.com",
+  Trello: "trello.com",
+  Discord: "discord.com",
+  Teams: "microsoft.com",
+  Airtable: "airtable.com",
+  Loom: "loom.com",
+  chatgpt: "openai.com",
+};
+
+/**
+ * Platform emoji mapping for visual representation
+ */
+const platformEmojiMap: Record<string, string> = {
+  Netflix: "🎬",
+  Spotify: "🎵",
+  "Adobe CC": "🎨",
+  GitHub: "💻",
+  AWS: "☁️",
+  Slack: "💬",
+  Zoom: "📹",
+  Linear: "📋",
+  Figma: "🎯",
+  "ChatGPT Plus": "🤖",
+  "YouTube Premium": "📺",
+  Notion: "📝",
+  "1Password": "🔐",
+  Dropbox: "📦",
+  Gmail: "📧",
+  Drive: "☁️",
+  Jira: "🐛",
+  Asana: "✅",
+  Monday: "📅",
+  Canva: "🖼️",
+  Trello: "🎴",
+  Discord: "🎮",
+  Teams: "👥",
+  Airtable: "🗄️",
+  Loom: "🎥",
+  chatgpt: "🤖",
+};
+
+/**
+ * Generate Clearbit logo URL dynamically from platform name
+ * Fallback to DuckDuckGo if Clearbit fails
+ * @param platform - The subscription platform name
+ * @returns Full Clearbit logo URL or DuckDuckGo fallback
+ */
+export function getClearbitLogoUrl(platform: string): string {
+  const domain = platformDomainMap[platform];
+  if (!domain) {
+    console.warn(`Platform domain mapping not found for: ${platform}`);
+    return "";
+  }
+  // Use DuckDuckGo as it's more reliable with CORS
+  return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+}
+
+/**
+ * Get emoji for a platform
+ */
+export function getPlatformEmoji(platform: string): string {
+  return platformEmojiMap[platform] || "📱";
+}
+
 export const initialSubscriptions: Subscription[] = [
   {
     id: "1",
