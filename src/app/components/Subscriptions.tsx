@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Search, Edit2, Trash2, Download, Filter, Eye, EyeOff, Copy, Check, AlertTriangle } from "lucide-react";
-import { Subscription, getDaysUntilExpiry, getMonthlyCost, getClearbitLogoUrl, getPlatformEmoji } from "../data/subscriptions";
+import { Subscription, getDaysUntilExpiry, getMonthlyCost, getClearbitLogoUrl } from "../data/subscriptions";
 import { AddEditModal } from "./AddEditModal";
 
 interface SubscriptionsProps {

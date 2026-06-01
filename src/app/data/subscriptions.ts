@@ -56,37 +56,11 @@ const platformDomainMap: Record<string, string> = {
   chatgpt: "openai.com",
 };
 
-/**
- * Platform emoji mapping for visual representation
- */
-const platformEmojiMap: Record<string, string> = {
-  Netflix: "🎬",
-  Spotify: "🎵",
-  "Adobe CC": "🎨",
-  GitHub: "💻",
-  AWS: "☁️",
-  Slack: "💬",
-  Zoom: "📹",
-  Linear: "📋",
-  Figma: "🎯",
-  "ChatGPT Plus": "🤖",
-  "YouTube Premium": "📺",
-  Notion: "📝",
-  "1Password": "🔐",
-  Dropbox: "📦",
-  Gmail: "📧",
-  Drive: "☁️",
-  Jira: "🐛",
-  Asana: "✅",
-  Monday: "📅",
-  Canva: "🖼️",
-  Trello: "🎴",
-  Discord: "🎮",
-  Teams: "👥",
-  Airtable: "🗄️",
-  Loom: "🎥",
-  chatgpt: "🤖",
-};
+// Add a few additional common mappings
+platformDomainMap["Claude"] = "claude.ai";
+platformDomainMap["Prime Video"] = "primevideo.com";
+platformDomainMap["PrimeVideo"] = "primevideo.com";
+platformDomainMap["Claude AI"] = "claude.ai";
 
 /**
  * Generate Clearbit logo URL dynamically from platform name
@@ -95,20 +69,31 @@ const platformEmojiMap: Record<string, string> = {
  * @returns Full Clearbit logo URL or DuckDuckGo fallback
  */
 export function getClearbitLogoUrl(platform: string): string {
-  const domain = platformDomainMap[platform];
+  if (!platform) return "";
+  // Try exact key
+  let domain = platformDomainMap[platform];
   if (!domain) {
-    console.warn(`Platform domain mapping not found for: ${platform}`);
-    return "";
+    // Case-insensitive key lookup
+    const foundKey = Object.keys(platformDomainMap).find((k) => k.toLowerCase() === platform.toLowerCase());
+    if (foundKey) domain = platformDomainMap[foundKey];
   }
-  // Use DuckDuckGo as it's more reliable with CORS
-  return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-}
 
-/**
- * Get emoji for a platform
- */
-export function getPlatformEmoji(platform: string): string {
-  return platformEmojiMap[platform] || "📱";
+  // If still not found, attempt a few heuristics (guess common TLDs)
+  if (!domain) {
+    const slug = platform.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const candidates = [
+      `${slug}.com`,
+      `${slug}.ai`,
+      `${slug}.io`,
+      `www.${slug}.com`,
+    ];
+    // Return first candidate (Favicon.io will 404 if not present; UI handles fallback)
+    domain = candidates[0];
+    console.warn(`Platform domain mapping not found for: ${platform}. Guessing domain: ${domain}`);
+  }
+
+  // Use DuckDuckGo endpoint
+  return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
 }
 
 export const initialSubscriptions: Subscription[] = [
