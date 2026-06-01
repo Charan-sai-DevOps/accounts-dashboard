@@ -28,6 +28,10 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
     cycle: "Monthly" as BillingCycle,
     paymentMode: "Card" as PaymentMode,
     buyer: "",
+    accountHolder: "",
+    accountEmail: "",
+    accountPassword: "",
+    invoiceFileName: "",
     category: "Productivity" as Category,
     color: "#6366f1",
     logo: "",
@@ -45,6 +49,10 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
         cycle: subscription.cycle,
         paymentMode: subscription.paymentMode,
         buyer: subscription.buyer,
+        accountHolder: subscription.accountHolder,
+        accountEmail: subscription.accountEmail,
+        accountPassword: subscription.accountPassword,
+        invoiceFileName: subscription.invoiceFileName || "",
         category: subscription.category,
         color: subscription.color,
         logo: subscription.logo,
@@ -61,7 +69,7 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.platform || !form.cost || !form.expiryDate) return;
+    if (!form.platform || !form.cost || !form.expiryDate || !form.accountHolder || !form.accountEmail) return;
     onSave({
       ...form,
       cost: parseFloat(form.cost),
@@ -201,6 +209,76 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
                 {PAYMENT_MODES.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Account Holder *</label>
+              <input
+                required
+                value={form.accountHolder}
+                onChange={(e) => setForm((f) => ({ ...f, accountHolder: e.target.value }))}
+                placeholder="e.g. Alex Johnson"
+                className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
+                style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Account Email/Username *</label>
+              <input
+                required
+                value={form.accountEmail}
+                onChange={(e) => setForm((f) => ({ ...f, accountEmail: e.target.value }))}
+                placeholder="email or username"
+                className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
+                style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Account Password</label>
+            <input
+              value={form.accountPassword}
+              onChange={(e) => setForm((f) => ({ ...f, accountPassword: e.target.value }))}
+              placeholder="Optional - store if needed"
+              className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
+              style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+              onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+              onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Invoice upload</label>
+            <div className="flex items-center gap-3">
+              <label
+                htmlFor="invoice-upload"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", cursor: "pointer" }}
+              >
+                Upload Invoice
+              </label>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>
+                {form.invoiceFileName || "PDF, PNG, JPG up to 10 MB"}
+              </span>
+            </div>
+            <input
+              id="invoice-upload"
+              type="file"
+              accept=".pdf,image/png,image/jpeg"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setForm((f) => ({ ...f, invoiceFileName: file.name }));
+                }
+              }}
+            />
           </div>
 
           <div>

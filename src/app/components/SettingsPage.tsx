@@ -247,7 +247,7 @@ export function SettingsPage() {
           </div>
           <div className="flex flex-col gap-4">
             {[
-              { label: "Currency", options: ["USD ($)", "EUR (€)", "GBP (£)", "JPY (¥)"] },
+              { label: "Currency", options: ["USD ($)", "EUR (€)", "GBP (£)", "JPY (¥)", "INR (₹)"] },
               { label: "Date Format", options: ["YYYY-MM-DD", "MM/DD/YYYY", "DD/MM/YYYY"] },
               { label: "Default View", options: ["Dashboard", "Subscriptions", "Renewals"] },
             ].map((item) => (

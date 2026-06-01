@@ -34,3 +34,4 @@ pnpm-debug.log*
 
 # Firebase admin secret storage
 firebase-adminsdk-*
+.vercel
