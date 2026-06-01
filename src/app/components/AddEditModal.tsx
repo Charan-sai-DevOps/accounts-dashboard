@@ -79,7 +79,7 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
-      <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+      <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
           <div>
@@ -98,7 +98,7 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(90vh - 96px)" }}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Platform *</label>

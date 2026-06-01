@@ -5,13 +5,15 @@ import {
   Clock, Mail, Smartphone, ChevronRight,
   Search, Edit2, AlertTriangle,
 } from "lucide-react";
-import { Subscription, getDaysUntilExpiry } from "../data/subscriptions";
+import { Subscription } from "../data/subscriptions";
 
 type SettingsSection = "users" | "notifications" | "currency" | "2fa";
 
 interface SettingsPageProps {
   subscriptions: Subscription[];
 }
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface AppUser {
   id: string;
@@ -29,7 +31,14 @@ interface CustomNotification {
   reminder: string;
 }
 
-const initialUsers: AppUser[] = [];
+// ─── Initial data ─────────────────────────────────────────────────────────────
+
+const initialUsers: AppUser[] = [
+  { id: "1", name: "Charan Sai", email: "Charan@webomindapps.com", role: "Admin", lastLogin: "2026-06-01 09:14", avatar: "C" },
+  { id: "2", name: "Alex Johnson", email: "alex@example.com", role: "Member", lastLogin: "2026-05-31 16:42", avatar: "A" },
+  { id: "3", name: "Jordan Lee", email: "jordan@example.com", role: "Member", lastLogin: "2026-05-30 11:05", avatar: "J" },
+  { id: "4", name: "Taylor Smith", email: "taylor@example.com", role: "Viewer", lastLogin: "2026-05-28 14:20", avatar: "T" },
+];
 
 const REMINDER_OPTIONS = [
   "7 days before",
@@ -46,12 +55,16 @@ const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
   Viewer: { bg: "rgba(148,163,184,0.12)", color: "#64748b" },
 };
 
+// ─── Submenu nav items ────────────────────────────────────────────────────────
+
 const settingsNav: { id: SettingsSection; label: string; icon: React.ReactNode; desc: string }[] = [
   { id: "users", label: "User Management", icon: <Users size={17} />, desc: "Manage team members & roles" },
   { id: "notifications", label: "Notifications", icon: <Bell size={17} />, desc: "Renewal alerts & reminders" },
   { id: "currency", label: "Currency Display", icon: <DollarSign size={17} />, desc: "Set your preferred currency" },
   { id: "2fa", label: "Two-Factor Auth", icon: <Shield size={17} />, desc: "Secure your account" },
 ];
+
+// ─── Shared toggle component ──────────────────────────────────────────────────
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -78,17 +91,19 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function SettingsPage({ subscriptions }: SettingsPageProps) {
   const [section, setSection] = useState<SettingsSection>("users");
+
+  // ── User Management state ──
   const [users, setUsers] = useState<AppUser[]>(initialUsers);
   const [userSearch, setUserSearch] = useState("");
   const [showCreateUser, setShowCreateUser] = useState(false);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
-  const [editUserId, setEditUserId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"] });
-  const [reminderLog, setReminderLog] = useState<string[]>([]);
 
+  // ── Notification state ──
   const [builtInNotifs, setBuiltInNotifs] = useState({
     sevenDay: true,
     threeDayBefore: true,
@@ -100,64 +115,43 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
   const [showAddNotif, setShowAddNotif] = useState(false);
   const [notifForm, setNotifForm] = useState({ email: "", platform: "", reminder: REMINDER_OPTIONS[0] });
 
+  // ── Currency state ──
   const [primaryCurrency, setPrimaryCurrency] = useState<"INR" | "USD">("INR");
+  const [additionalCurrency, setAdditionalCurrency] = useState<"USD" | "INR" | "EUR" | "None">("USD");
+  const [exchangeRates] = useState({ INR: 83.5, USD: 1, EUR: 0.92 });
 
+  // ── 2FA state ──
   const [emailAuth, setEmailAuth] = useState(false);
   const [googleAuth, setGoogleAuth] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifySuccess, setVerifySuccess] = useState(false);
 
+  // ── Handlers ──
+
   const handleCreateUser = () => {
     if (!newUser.name || !newUser.email) return;
-
-    if (editUserId) {
-      setUsers((prev) => prev.map((user) =>
-        user.id === editUserId
-          ? { ...user, name: newUser.name, email: newUser.email, role: newUser.role }
-          : user
-      ));
-    } else {
-      const id = String(Date.now());
-      setUsers((prev) => [
-        ...prev,
-        {
-          id,
-          name: newUser.name,
-          email: newUser.email,
-          role: newUser.role,
-          lastLogin: "Never",
-          avatar: newUser.name[0].toUpperCase(),
-        },
-      ]);
-    }
-
+    const id = String(Date.now());
+    setUsers((prev) => [...prev, {
+      id,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+      lastLogin: "Never",
+      avatar: newUser.name[0].toUpperCase(),
+    }]);
     setNewUser({ name: "", email: "", role: "Member" });
-    setEditUserId(null);
     setShowCreateUser(false);
   };
 
-  const startEditUser = (user: AppUser) => {
-    setEditUserId(user.id);
-    setNewUser({ name: user.name, email: user.email, role: user.role });
-    setShowCreateUser(true);
-  };
-
-  const requestDeleteUser = (user: AppUser) => {
-    setPendingDeleteId(user.id);
-    setDeleteTargetName(user.name);
-  };
-
-  const confirmDeleteUser = () => {
-    if (!pendingDeleteId) return;
-    setUsers((prev) => prev.filter((user) => user.id !== pendingDeleteId));
-    setPendingDeleteId(null);
-    setDeleteTargetName(null);
-  };
-
-  const cancelDelete = () => {
-    setPendingDeleteId(null);
-    setDeleteTargetName(null);
+  const handleDeleteUser = (id: string) => {
+    if (deleteConfirm === id) {
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+      setDeleteConfirm(null);
+    } else {
+      setDeleteConfirm(id);
+      setTimeout(() => setDeleteConfirm(null), 3000);
+    }
   };
 
   const handleAddNotif = () => {
@@ -165,72 +159,6 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
     setCustomNotifs((prev) => [...prev, { id: String(Date.now()), ...notifForm }]);
     setNotifForm({ email: "", platform: "", reminder: REMINDER_OPTIONS[0] });
     setShowAddNotif(false);
-  };
-
-  const REMINDER_DAYS: Record<string, number> = {
-    "7 days before": 7,
-    "5 days before": 5,
-    "3 days before": 3,
-    "2 days before": 2,
-    "1 day before": 1,
-    "Day of renewal": 0,
-  };
-
-  const formatReminderMessage = (days: number) => {
-    if (days === 0) return "Day of renewal";
-    return `${days} day${days === 1 ? "" : "s"} before`;
-  };
-
-  const getPlatformEmail = (sub: Subscription) => {
-    return sub.accountEmail || `${sub.platform.toLowerCase().replace(/\s+/g, "")}@example.com`;
-  };
-
-  const collectDueReminders = () => {
-    const messages: string[] = [];
-
-    subscriptions.forEach((sub) => {
-      const days = getDaysUntilExpiry(sub.expiryDate);
-      if (days < 0) return;
-
-      if (days === 7 && builtInNotifs.sevenDay) {
-        messages.push(`Send 7-day reminder for ${sub.platform} to ${getPlatformEmail(sub)} (expiry ${sub.expiryDate})`);
-      }
-      if (days === 3 && builtInNotifs.threeDayBefore) {
-        messages.push(`Send 3-day reminder for ${sub.platform} to ${getPlatformEmail(sub)} (expiry ${sub.expiryDate})`);
-      }
-      if (days === 0 && builtInNotifs.dayOf) {
-        messages.push(`Send day-of renewal reminder for ${sub.platform} to ${getPlatformEmail(sub)} (expiry ${sub.expiryDate})`);
-      }
-    });
-
-    if (builtInNotifs.monthlySummary) {
-      messages.push(`Monthly spend summary mode is enabled for all active subscriptions.`);
-    }
-
-    if (builtInNotifs.newSub) {
-      messages.push(`New subscription alerts are enabled for the account.`);
-    }
-
-    customNotifs.forEach((notif) => {
-      const requiredDays = REMINDER_DAYS[notif.reminder];
-      subscriptions.filter((sub) => sub.platform === notif.platform).forEach((sub) => {
-        const days = getDaysUntilExpiry(sub.expiryDate);
-        if (days === requiredDays) {
-          messages.push(`Custom reminder for ${sub.platform} to ${notif.email} on ${notif.reminder} (expiry ${sub.expiryDate})`);
-        }
-      });
-    });
-
-    return messages;
-  };
-
-  const runReminderCheck = () => {
-    const messages = collectDueReminders();
-    if (messages.length === 0) {
-      setReminderLog([`No scheduled reminders are due right now.`]);
-    } else {
-      setReminderLog(messages);
-    }
   };
 
   const handleDeleteNotif = (id: string) => {
@@ -241,11 +169,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
     if (verifyCode.length === 6) {
       setVerifySuccess(true);
       setGoogleAuth(true);
-      setTimeout(() => {
-        setShowQR(false);
-        setVerifySuccess(false);
-        setVerifyCode("");
-      }, 2000);
+      setTimeout(() => { setShowQR(false); setVerifySuccess(false); setVerifyCode(""); }, 2000);
     }
   };
 
@@ -255,8 +179,13 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
 
   const platformOptions = Array.from(new Set(subscriptions.map((s) => s.platform)));
 
+  // ── Currency helper ──
+  const currencySymbol = (c: string) => c === "INR" ? "₹" : c === "USD" ? "$" : c === "EUR" ? "€" : "";
+  const currencyLabel = (c: string) => `${currencySymbol(c)} ${c}`;
+
   return (
     <div className="flex h-full min-h-screen" style={{ background: "#f8fafc" }}>
+      {/* Settings submenu */}
       <div className="w-64 flex-shrink-0 p-5 flex flex-col gap-2" style={{ background: "white", borderRight: "1px solid #e2e8f0", minHeight: "100vh" }}>
         <div className="mb-4">
           <h2 style={{ color: "#0f172a", marginBottom: "4px" }}>Settings</h2>
@@ -288,9 +217,13 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
         })}
       </div>
 
+      {/* Section content */}
       <div className="flex-1 p-8 overflow-y-auto">
+
+        {/* ── USER MANAGEMENT ── */}
         {section === "users" && (
           <div className="flex flex-col gap-6 max-w-4xl">
+            {/* Header */}
             <div className="flex items-center justify-between">
               <div>
                 <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>User Management</h1>
@@ -306,6 +239,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               </button>
             </div>
 
+            {/* Stat cards */}
             <div className="grid grid-cols-3 gap-4">
               {[
                 { label: "Total Users", value: users.length, color: "#6366f1", bg: "rgba(99,102,241,0.08)" },
@@ -324,6 +258,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               ))}
             </div>
 
+            {/* Search */}
             <div className="relative max-w-xs">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94a3b8" }} />
               <input
@@ -337,12 +272,13 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               />
             </div>
 
+            {/* Users table */}
             <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #e2e8f0" }}>
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
-                    {['User', 'Email', 'Role', 'Last Login', 'Actions'].map((h) => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em' }}>
+                    {["User", "Email", "Role", "Last Login", "Actions"].map((h) => (
+                      <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "#94a3b8", letterSpacing: "0.05em" }}>
                         {h.toUpperCase()}
                       </th>
                     ))}
@@ -350,43 +286,39 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                 </thead>
                 <tbody>
                   {filteredUsers.map((user, i) => (
-                    <tr key={user.id} style={{ borderBottom: i < filteredUsers.length - 1 ? '1px solid #f1f5f9' : 'none' }} className="hover:bg-slate-50 transition-colors">
-                      <td style={{ padding: '14px 16px' }}>
+                    <tr key={user.id} style={{ borderBottom: i < filteredUsers.length - 1 ? "1px solid #f1f5f9" : "none" }} className="hover:bg-slate-50 transition-colors">
+                      <td style={{ padding: "14px 16px" }}>
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', fontSize: '13px', fontWeight: 700 }}>
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white flex-shrink-0"
+                            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 700 }}>
                             {user.avatar}
                           </div>
-                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{user.name}</span>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{user.name}</span>
                         </div>
                       </td>
-                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#64748b' }}>{user.email}</td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <span className="px-2.5 py-1 rounded-lg" style={{ fontSize: '11px', fontWeight: 600, ...ROLE_COLORS[user.role] }}>
+                      <td style={{ padding: "14px 16px", fontSize: "13px", color: "#64748b" }}>{user.email}</td>
+                      <td style={{ padding: "14px 16px" }}>
+                        <span className="px-2.5 py-1 rounded-lg" style={{ fontSize: "11px", fontWeight: 600, ...ROLE_COLORS[user.role] }}>
                           {user.role}
                         </span>
                       </td>
-                      <td style={{ padding: '14px 16px' }}>
+                      <td style={{ padding: "14px 16px" }}>
                         <div className="flex items-center gap-2">
-                          <Clock size={12} style={{ color: '#94a3b8' }} />
-                          <span style={{ fontSize: '12px', color: '#64748b' }}>{user.lastLogin}</span>
+                          <Clock size={12} style={{ color: "#94a3b8" }} />
+                          <span style={{ fontSize: "12px", color: "#64748b" }}>{user.lastLogin}</span>
                         </div>
                       </td>
-                      <td style={{ padding: '14px 16px' }}>
+                      <td style={{ padding: "14px 16px" }}>
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => startEditUser(user)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center"
-                            style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}
-                            title="Edit user"
-                          >
+                          <button className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1" }}>
                             <Edit2 size={13} />
                           </button>
-                          {user.role !== 'Admin' && (
+                          {user.role !== "Admin" && (
                             <button
-                              onClick={() => requestDeleteUser(user)}
+                              onClick={() => handleDeleteUser(user.id)}
                               className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                              style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
-                              title="Delete user"
+                              style={{ background: deleteConfirm === user.id ? "rgba(239,68,68,0.18)" : "rgba(239,68,68,0.08)", color: "#ef4444" }}
+                              title={deleteConfirm === user.id ? "Click again to confirm delete" : "Delete user"}
                             >
                               <Trash2 size={13} />
                             </button>
@@ -396,34 +328,35 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                     </tr>
                   ))}
                   {filteredUsers.length === 0 && (
-                    <tr><td colSpan={5} style={{ padding: '48px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>No users found</td></tr>
+                    <tr><td colSpan={5} style={{ padding: "48px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>No users found</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
 
-            <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+            {/* Last Login Activity */}
+            <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
               <div className="flex items-center gap-2 mb-4">
-                <UserCheck size={16} style={{ color: '#6366f1' }} />
-                <h3 style={{ color: '#0f172a' }}>Last Login Activity</h3>
+                <UserCheck size={16} style={{ color: "#6366f1" }} />
+                <h3 style={{ color: "#0f172a" }}>Last Login Activity</h3>
               </div>
               <div className="flex flex-col gap-3">
                 {[...users].sort((a, b) => b.lastLogin.localeCompare(a.lastLogin)).map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#f8fafc' }}>
+                  <div key={user.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "#f8fafc" }}>
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', fontSize: '11px', fontWeight: 700 }}>
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "11px", fontWeight: 700 }}>
                         {user.avatar}
                       </div>
                       <div>
-                        <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{user.name}</p>
-                        <p style={{ fontSize: '11px', color: '#94a3b8' }}>{user.email}</p>
+                        <p style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{user.name}</p>
+                        <p style={{ fontSize: "11px", color: "#94a3b8" }}>{user.email}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md" style={{ fontSize: '11px', fontWeight: 600, ...ROLE_COLORS[user.role] }}>{user.role}</span>
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: user.lastLogin === 'Never' ? 'rgba(148,163,184,0.1)' : 'rgba(16,185,129,0.08)' }}>
-                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: user.lastLogin === 'Never' ? '#94a3b8' : '#10b981' }} />
-                        <span style={{ fontSize: '11px', color: user.lastLogin === 'Never' ? '#94a3b8' : '#10b981', fontWeight: 600 }}>{user.lastLogin}</span>
+                      <span className="px-2 py-0.5 rounded-md" style={{ fontSize: "11px", fontWeight: 600, ...ROLE_COLORS[user.role] }}>{user.role}</span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: user.lastLogin === "Never" ? "rgba(148,163,184,0.1)" : "rgba(16,185,129,0.08)" }}>
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: user.lastLogin === "Never" ? "#94a3b8" : "#10b981" }} />
+                        <span style={{ fontSize: "11px", color: user.lastLogin === "Never" ? "#94a3b8" : "#10b981", fontWeight: 600 }}>{user.lastLogin}</span>
                       </div>
                     </div>
                   </div>
@@ -433,6 +366,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
           </div>
         )}
 
+        {/* ── NOTIFICATIONS ── */}
         {section === "notifications" && (
           <div className="flex flex-col gap-6 max-w-2xl">
             <div className="flex items-center justify-between">
@@ -450,6 +384,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               </button>
             </div>
 
+            {/* Built-in reminders */}
             <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
               <div className="flex items-center gap-2 mb-5">
                 <Bell size={16} style={{ color: "#6366f1" }} />
@@ -474,33 +409,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               </div>
             </div>
 
-            <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Bell size={16} style={{ color: "#6366f1" }} />
-                  <h3 style={{ color: "#0f172a" }}>Reminder Runner</h3>
-                </div>
-                <button
-                  onClick={runReminderCheck}
-                  className="px-4 py-2 rounded-xl text-white"
-                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600 }}
-                >
-                  Run reminder check
-                </button>
-              </div>
-              <div className="flex flex-col gap-3">
-                {reminderLog.length === 0 ? (
-                  <p style={{ color: "#64748b", fontSize: "13px" }}>Run the reminder check to preview which emails would be sent based on expiry dates and reminder intervals.</p>
-                ) : (
-                  reminderLog.map((message, index) => (
-                    <div key={index} className="rounded-2xl p-3" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                      <p style={{ fontSize: "13px", color: "#0f172a" }}>{message}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
+            {/* Custom notifications */}
             {customNotifs.length > 0 && (
               <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
                 <div className="flex items-center gap-2 mb-4">
@@ -519,7 +428,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                           <p style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{notif.email}</p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span style={{ fontSize: "12px", color: "#94a3b8" }}>{notif.platform}</span>
-                            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>•</span>
+                            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>·</span>
                             <span style={{ fontSize: "12px", color: "#94a3b8" }}>{notif.reminder}</span>
                           </div>
                         </div>
@@ -535,6 +444,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
           </div>
         )}
 
+        {/* ── CURRENCY DISPLAY ── */}
         {section === "currency" && (
           <div className="flex flex-col gap-6 max-w-xl">
             <div>
@@ -542,6 +452,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               <p style={{ fontSize: "14px", color: "#64748b" }}>Choose your primary and additional display currency</p>
             </div>
 
+            {/* Primary currency */}
             <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
               <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Primary Currency</h3>
               <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>All amounts will be displayed in this currency</p>
@@ -573,9 +484,71 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                 ))}
               </div>
             </div>
+
+            {/* Additional currency */}
+            <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
+              <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Additional Currency</h3>
+              <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Show a secondary currency alongside the primary</p>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { code: "USD", name: "US Dollar", symbol: "$", flag: "🇺🇸" },
+                  { code: "EUR", name: "Euro", symbol: "€", flag: "🇪🇺" },
+                  { code: "INR", name: "Indian Rupee", symbol: "₹", flag: "🇮🇳" },
+                  { code: "None", name: "No additional", symbol: "—", flag: "🚫" },
+                ] as const).map((c) => (
+                  <button
+                    key={c.code}
+                    onClick={() => setAdditionalCurrency(c.code)}
+                    className="flex items-center gap-3 p-3 rounded-xl transition-all text-left"
+                    style={{
+                      border: `2px solid ${additionalCurrency === c.code ? "#8b5cf6" : "#e2e8f0"}`,
+                      background: additionalCurrency === c.code ? "rgba(139,92,246,0.04)" : "white",
+                      opacity: c.code === primaryCurrency ? 0.4 : 1,
+                      pointerEvents: c.code === primaryCurrency ? "none" : "auto",
+                    }}
+                  >
+                    <span style={{ fontSize: "22px" }}>{c.flag}</span>
+                    <div>
+                      <p style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a" }}>{c.code}</p>
+                      <p style={{ fontSize: "11px", color: "#94a3b8" }}>{c.name}</p>
+                    </div>
+                    {additionalCurrency === c.code && (
+                      <div className="ml-auto w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#8b5cf6" }}>
+                        <Check size={11} className="text-white" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live exchange preview */}
+            {additionalCurrency !== "None" && (
+              <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))", border: "1px solid rgba(99,102,241,0.2)" }}>
+                <p style={{ fontSize: "13px", fontWeight: 600, color: "#6366f1", marginBottom: "12px" }}>Exchange Rate Preview</p>
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <p style={{ fontSize: "28px", fontWeight: 700, color: "#0f172a" }}>{currencySymbol(primaryCurrency)}100</p>
+                    <p style={{ fontSize: "12px", color: "#64748b" }}>{primaryCurrency}</p>
+                  </div>
+                  <div style={{ flex: 1, height: "1px", background: "rgba(99,102,241,0.3)" }} />
+                  <div className="text-center">
+                    <p style={{ fontSize: "28px", fontWeight: 700, color: "#6366f1" }}>
+                      {currencySymbol(additionalCurrency)}
+                      {primaryCurrency === "INR" && additionalCurrency === "USD" ? (100 / exchangeRates.INR).toFixed(2) :
+                        primaryCurrency === "USD" && additionalCurrency === "INR" ? (100 * exchangeRates.INR).toFixed(2) :
+                          primaryCurrency === "USD" && additionalCurrency === "EUR" ? (100 * exchangeRates.EUR).toFixed(2) :
+                            "—"}
+                    </p>
+                    <p style={{ fontSize: "12px", color: "#64748b" }}>{additionalCurrency}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* ── TWO-FACTOR AUTH ── */}
         {section === "2fa" && (
           <div className="flex flex-col gap-6 max-w-xl">
             <div>
@@ -583,6 +556,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               <p style={{ fontSize: "14px", color: "#64748b" }}>Add an extra layer of security to your account</p>
             </div>
 
+            {/* Status banner */}
             <div className="rounded-2xl p-4 flex items-center gap-3"
               style={{ background: emailAuth || googleAuth ? "rgba(16,185,129,0.08)" : "rgba(245,158,11,0.08)", border: `1px solid ${emailAuth || googleAuth ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}` }}>
               {emailAuth || googleAuth ? <Check size={16} style={{ color: "#10b981" }} /> : <AlertTriangle size={16} style={{ color: "#f59e0b" }} />}
@@ -591,6 +565,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               </p>
             </div>
 
+            {/* Email 2FA */}
             <div className="rounded-2xl p-6" style={{ background: "white", border: "1px solid #e2e8f0" }}>
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
@@ -605,7 +580,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                     {emailAuth && (
                       <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg self-start" style={{ background: "rgba(16,185,129,0.1)", display: "inline-flex" }}>
                         <Check size={12} style={{ color: "#10b981" }} />
-                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled � Charan@webomindapps.com</span>
+                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled — Charan@webomindapps.com</span>
                       </div>
                     )}
                   </div>
@@ -617,6 +592,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               </div>
             </div>
 
+            {/* Google Authenticator 2FA */}
             <div className="rounded-2xl p-6" style={{ background: "white", border: "1px solid #e2e8f0" }}>
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
@@ -641,33 +617,30 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                   <Toggle
                     value={googleAuth}
                     onChange={(v) => {
-                      if (v) {
-                        setShowQR(true);
-                      } else {
-                        setGoogleAuth(false);
-                        setShowQR(false);
-                      }
+                      if (v) { setShowQR(true); }
+                      else { setGoogleAuth(false); setShowQR(false); }
                     }}
                   />
                 </div>
               </div>
 
+              {/* QR setup flow */}
               {showQR && !googleAuth && (
                 <div className="mt-5 pt-5" style={{ borderTop: "1px solid #f1f5f9" }}>
                   <p style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a", marginBottom: "12px" }}>Setup Google Authenticator</p>
                   <div className="flex gap-6 items-start">
+                    {/* QR placeholder */}
                     <div className="flex-shrink-0">
                       <div className="w-32 h-32 rounded-xl flex items-center justify-center" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
                         <svg width="100" height="100" viewBox="0 0 100 100">
-                          {[0,1,2,3,4,5,6].map((r) =>
-                            [0,1,2,3,4,5,6].map((c) => {
-                              const inTopLeft = r < 3 && c < 3;
-                              const inTopRight = r < 3 && c > 3;
-                              const inBottomLeft = r > 3 && c < 3;
-                              const fill = (inTopLeft || inTopRight || inBottomLeft || Math.random() > 0.5) ? "#0f172a" : "transparent";
-                              return <rect key={`${r}-${c}`} x={c*13+5} y={r*13+5} width={11} height={11} fill={fill} rx={1} />;
-                            })
-                          )}
+                          {/* Simulated QR code pattern */}
+                          {[0,1,2,3,4,5,6].map(r => [0,1,2,3,4,5,6].map(c => {
+                            const inTopLeft = r < 3 && c < 3;
+                            const inTopRight = r < 3 && c > 3;
+                            const inBottomLeft = r > 3 && c < 3;
+                            const fill = (inTopLeft || inTopRight || inBottomLeft || Math.random() > 0.5) ? "#0f172a" : "transparent";
+                            return <rect key={`${r}-${c}`} x={c*13+5} y={r*13+5} width={11} height={11} fill={fill} rx={1} />;
+                          }))}
                         </svg>
                       </div>
                       <p style={{ fontSize: "10px", color: "#94a3b8", textAlign: "center", marginTop: "6px" }}>Scan with app</p>
@@ -710,6 +683,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
         )}
       </div>
 
+      {/* ── Create User Modal ── */}
       {showCreateUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
           <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
@@ -747,8 +721,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                       className="flex-1 py-2 rounded-xl transition-all"
                       style={{
                         border: `1.5px solid ${newUser.role === role ? "#6366f1" : "#e2e8f0"}`,
-                        fontSize: "13px",
-                        fontWeight: newUser.role === role ? 600 : 400,
+                        fontSize: "13px", fontWeight: newUser.role === role ? 600 : 400,
                         background: newUser.role === role ? "rgba(99,102,241,0.08)" : "white",
                         color: newUser.role === role ? "#6366f1" : "#64748b",
                       }}
@@ -763,7 +736,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                   Cancel
                 </button>
                 <button onClick={handleCreateUser} className="flex-1 py-2.5 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}>
-                  {editUserId ? "Save Changes" : "Create User"}
+                  Create User
                 </button>
               </div>
             </div>
@@ -771,6 +744,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
         </div>
       )}
 
+      {/* ── Add Notification Modal ── */}
       {showAddNotif && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
           <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
@@ -805,7 +779,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                   className="w-full px-3 py-2.5 rounded-xl outline-none"
                   style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: notifForm.platform ? "#0f172a" : "#94a3b8" }}
                 >
-                  <option value="">Select platform�</option>
+                  <option value="">Select platform…</option>
                   {platformOptions.map((pl) => <option key={pl} value={pl}>{pl}</option>)}
                 </select>
               </div>
@@ -831,37 +805,6 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                 </button>
                 <button onClick={handleAddNotif} className="flex-1 py-2.5 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}>
                   Add Notification
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {pendingDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-sm rounded-3xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.18)" }}>
-            <div className="p-6 text-center">
-              <div className="mx-auto mb-4 w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(248,113,113,0.14)" }}>
-                <AlertTriangle size={28} style={{ color: "#ef4444" }} />
-              </div>
-              <h2 style={{ color: "#0f172a", fontSize: "22px", marginBottom: "8px" }}>Delete?</h2>
-              <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px" }}>
-                Are you sure you want to DELETE USER {deleteTargetName ? `"${deleteTargetName}"` : "this user"}?
-              </p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={cancelDelete}
-                  className="flex-1 py-3 rounded-xl"
-                  style={{ border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontWeight: 600 }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteUser}
-                  className="flex-1 py-3 rounded-xl text-white"
-                  style={{ background: "#ef4444", fontWeight: 600 }}
-                >
-                  Delete
                 </button>
               </div>
             </div>

@@ -54,6 +54,9 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
     [subscriptions]
   );
 
+  const today = new Date();
+  const currentMonthYear = `${MONTHS[today.getMonth()]} ${today.getFullYear()}`;
+
   const stats = [
     {
       label: "Monthly Spend",
@@ -98,7 +101,7 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
           <p style={{ color: "#64748b", fontSize: "14px" }}>Track all your subscriptions in one place</p>
         </div>
         <div className="px-4 py-2 rounded-xl" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "white", fontSize: "13px", fontWeight: 600 }}>
-          May 2026
+          {currentMonthYear}
         </div>
       </div>
 

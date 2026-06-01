@@ -111,7 +111,7 @@ export default function App() {
         )}
         {page === "reports" && <Reports subscriptions={subscriptions} />}
         {page === "renewals" && <Renewals subscriptions={subscriptions} />}
-        {page === "settings" && <SettingsPage />}
+        {page === "settings" && <SettingsPage subscriptions={subscriptions} />}
       </main>
     </div>
   );

@@ -29,10 +29,38 @@ export function Renewals({ subscriptions }: RenewalsProps) {
     };
   }, [sorted]);
 
+  const [historyFilter, setHistoryFilter] = useState<"All" | "Paid" | "Failed" | "Cancelled">("All");
+
   const totalRenewingThisMonth = useMemo(
     () => [...groups.today, ...groups.week, ...groups.month].reduce((sum, s) => sum + s.cost, 0),
     [groups]
   );
+
+  const totalHistoryPaid = useMemo(
+    () => historyItems
+      .filter((s) => (s.renewalStatus || "Paid") === "Paid")
+      .reduce((sum, s) => sum + s.cost, 0),
+    [historyItems]
+  );
+
+  const filteredHistoryItems = useMemo(() => {
+    if (historyFilter === "All") return historyItems;
+    return historyItems.filter((s) => (s.renewalStatus || "Paid") === historyFilter);
+  }, [historyItems, historyFilter]);
+
+  const summaryCards = view === "upcoming"
+    ? [
+        { label: "Overdue", count: groups.overdue.length, color: "#ef4444", bg: "rgba(239,68,68,0.08)", icon: <AlertTriangle size={18} /> },
+        { label: "Due Today", count: groups.today.length, color: "#f59e0b", bg: "rgba(245,158,11,0.08)", icon: <Bell size={18} /> },
+        { label: "This Week", count: groups.week.length, color: "#f97316", bg: "rgba(249,115,22,0.08)", icon: <Clock size={18} /> },
+        { label: "This Month", count: groups.month.length, color: "#10b981", bg: "rgba(16,185,129,0.08)", icon: <CheckCircle size={18} /> },
+      ]
+    : [
+        { label: "Total Renewals", count: historyItems.length, color: "#6366f1", bg: "rgba(99,102,241,0.08)", icon: <Bell size={18} /> },
+        { label: "Successful", count: historyItems.filter((s) => (s.renewalStatus || "Paid") === "Paid").length, color: "#10b981", bg: "rgba(16,185,129,0.08)", icon: <CheckCircle size={18} /> },
+        { label: "Failed", count: historyItems.filter((s) => s.renewalStatus === "Failed").length, color: "#ef4444", bg: "rgba(239,68,68,0.08)", icon: <AlertTriangle size={18} /> },
+        { label: "Cancelled", count: historyItems.filter((s) => s.renewalStatus === "Cancelled").length, color: "#64748b", bg: "rgba(148,163,184,0.08)", icon: <Clock size={18} /> },
+      ];
 
   const RenewalCard = ({ sub }: { sub: Subscription }) => {
     const days = getDaysUntilExpiry(sub.expiryDate);
@@ -40,14 +68,14 @@ export function Renewals({ subscriptions }: RenewalsProps) {
     const overdue = days < 0;
     return (
       <div
-        className="flex items-center justify-between p-4 rounded-2xl transition-all"
+        className="flex items-center justify-between p-4 rounded-[16px] transition-all"
         style={{
           background: overdue ? "rgba(239,68,68,0.04)" : urgent ? "rgba(245,158,11,0.04)" : "white",
           border: `1px solid ${overdue ? "rgba(239,68,68,0.2)" : urgent ? "rgba(245,158,11,0.2)" : "#e2e8f0"}`,
         }}
       >
         <div className="flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ background: sub.color, fontSize: "11px", fontWeight: 700 }}>
+          <div className="w-11 h-11 rounded-[16px] flex items-center justify-center text-white" style={{ background: sub.color, fontSize: "11px", fontWeight: 700 }}>
             {sub.logo}
           </div>
           <div>
@@ -70,7 +98,7 @@ export function Renewals({ subscriptions }: RenewalsProps) {
             <p style={{ fontSize: "11px", color: "#94a3b8" }}>{sub.expiryDate}</p>
           </div>
           <div
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[16px]"
             style={{
               background: overdue ? "rgba(239,68,68,0.12)" : urgent ? "rgba(245,158,11,0.12)" : "rgba(16,185,129,0.12)",
               color: overdue ? "#ef4444" : urgent ? "#f59e0b" : "#10b981",
@@ -109,63 +137,87 @@ export function Renewals({ subscriptions }: RenewalsProps) {
   return (
     <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
       {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        <div className="max-w-2xl">
           <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Renewals</h1>
           <p style={{ color: "#64748b", fontSize: "14px" }}>Track upcoming and past renewal activity</p>
+          <div className="mt-5 inline-flex items-center gap-3 rounded-[16px] bg-slate-100 p-1">
+            {[
+              { value: "upcoming", label: "Upcoming" },
+              { value: "history", label: "History" },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setView(tab.value as "upcoming" | "history")}
+                className="px-4 py-2 rounded-[16px] transition-all"
+                style={{
+                  fontSize: "13px",
+                  fontWeight: view === tab.value ? 700 : 500,
+                  background: view === tab.value ? "white" : "transparent",
+                  color: view === tab.value ? "#0f172a" : "#64748b",
+                  border: view === tab.value ? "1px solid #e2e8f0" : "1px solid transparent",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {[
-            { value: "upcoming", label: "Upcoming" },
-            { value: "history", label: "History" },
-          ].map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setView(tab.value as "upcoming" | "history")}
-              className="px-4 py-2 rounded-2xl transition-all"
-              style={{
-                fontSize: "13px",
-                fontWeight: view === tab.value ? 700 : 500,
-                background: view === tab.value ? "white" : "rgba(241,245,249,0.8)",
-                color: view === tab.value ? "#0f172a" : "#64748b",
-                border: view === tab.value ? "1px solid #e2e8f0" : "1px solid transparent",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="rounded-[12px] border border-slate-200 bg-white px-3 py-2 shadow-sm self-start">
+          <p style={{ fontSize: "12px", color: "#94a3b8" }}>
+            {view === "history" ? "Total paid (history)" : "Due this month"}
+          </p>
+          <p style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>
+            ${view === "history" ? totalHistoryPaid.toFixed(2) : totalRenewingThisMonth.toFixed(2)}
+          </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="px-4 py-2.5 rounded-xl" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-          <p style={{ fontSize: "11px", color: "#94a3b8" }}>Due this month</p>
-          <p style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>${totalRenewingThisMonth.toFixed(2)}</p>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {summaryCards.map((item) => (
+          <div key={item.label} className="rounded-[16px] border border-slate-200 bg-white p-5 shadow-sm flex items-center gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-[16px]" style={{ background: item.bg, color: item.color }}>
+              {item.icon}
+            </div>
+            <div>
+              <p style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>{item.count}</p>
+              <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>{item.label}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+      {view === "history" && (
+        <div className="rounded-[16px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="inline-flex items-center gap-3 text-sm text-slate-600">
+              <span className="font-medium">Filter:</span>
+              <div className="inline-flex items-center gap-2 rounded-[16px] bg-slate-100 p-1">
+                {["All", "Paid", "Failed", "Cancelled"].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setHistoryFilter(status as "All" | "Paid" | "Failed" | "Cancelled")}
+                    className="px-4 py-2 rounded-[16px] transition-all"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: historyFilter === status ? 700 : 500,
+                      background: historyFilter === status ? "white" : "transparent",
+                      color: historyFilter === status ? "#0f172a" : "#64748b",
+                    }}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <span className="text-sm text-black">{filteredHistoryItems.length} records</span>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-[16px] overflow-hidden bg-white border border-slate-200 shadow-sm">
         {view === "upcoming" ? (
           <div className="p-6">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: "Overdue", count: groups.overdue.length, color: "#ef4444", bg: "rgba(239,68,68,0.08)", icon: <AlertTriangle size={16} /> },
-                { label: "Due Today", count: groups.today.length, color: "#f59e0b", bg: "rgba(245,158,11,0.08)", icon: <Bell size={16} /> },
-                { label: "This Week", count: groups.week.length, color: "#f97316", bg: "rgba(249,115,22,0.08)", icon: <Clock size={16} /> },
-                { label: "This Month", count: groups.month.length, color: "#10b981", bg: "rgba(16,185,129,0.08)", icon: <CheckCircle size={16} /> },
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl p-4 flex items-center gap-4" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: item.bg, color: item.color }}>
-                    {item.icon}
-                  </div>
-                  <div>
-                    <p style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>{item.count}</p>
-                    <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>{item.label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
             <div className="flex flex-col gap-6 mt-6">
               <Section title="Overdue" items={groups.overdue} accent="#ef4444" />
               <Section title="Due Today" items={groups.today} accent="#f59e0b" />
@@ -176,44 +228,25 @@ export function Renewals({ subscriptions }: RenewalsProps) {
           </div>
         ) : (
           <div className="p-6">
-            <div className="grid grid-cols-1 gap-3 mb-6 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: "Total Renewals", count: historyItems.length, color: "#6366f1", bg: "rgba(99,102,241,0.08)", icon: <Bell size={16} /> },
-                { label: "Paid", count: historyItems.filter((s) => (s.renewalStatus || "Paid") === "Paid").length, color: "#10b981", bg: "rgba(16,185,129,0.08)", icon: <CheckCircle size={16} /> },
-                { label: "Failed", count: historyItems.filter((s) => s.renewalStatus === "Failed").length, color: "#ef4444", bg: "rgba(239,68,68,0.08)", icon: <AlertTriangle size={16} /> },
-                { label: "Cancelled", count: historyItems.filter((s) => s.renewalStatus === "Cancelled").length, color: "#64748b", bg: "rgba(148,163,184,0.08)", icon: <Clock size={16} /> },
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl p-4 flex items-center gap-4" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: item.bg, color: item.color }}>
-                    {item.icon}
-                  </div>
-                  <div>
-                    <p style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>{item.count}</p>
-                    <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>{item.label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
             <div className="overflow-x-auto">
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
                     {['Platform', 'Plan', 'Amount', 'Cycle', 'Renewed On', 'Next Due', 'Payment', 'Buyer', 'Status'].map((h) => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em' }}>
+                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#000000', letterSpacing: '0.05em' }}>
                         {h.toUpperCase()}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {historyItems.length === 0 ? (
+                  {filteredHistoryItems.length === 0 ? (
                     <tr>
                       <td colSpan={9} style={{ padding: '48px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
                         No renewal history available
                       </td>
                     </tr>
-                  ) : historyItems.map((sub) => (
+                  ) : filteredHistoryItems.map((sub) => (
                     <tr key={sub.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '14px 16px', fontSize: '13px', color: '#0f172a' }}>{sub.platform}</td>
                       <td style={{ padding: '14px 16px', fontSize: '13px', color: '#0f172a' }}>{sub.plan}</td>

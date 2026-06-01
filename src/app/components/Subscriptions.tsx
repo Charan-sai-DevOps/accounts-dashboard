@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Edit2, Trash2, Download, Filter } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Download, Filter, Eye, EyeOff, Copy, Check, AlertTriangle } from "lucide-react";
 import { Subscription, getDaysUntilExpiry, getMonthlyCost } from "../data/subscriptions";
 import { AddEditModal } from "./AddEditModal";
 
@@ -18,7 +18,12 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
   const [showDateFilters, setShowDateFilters] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Subscription | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<Subscription | null>(null);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [copiedField, setCopiedField] = useState<"username" | "password" | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
 
   const filtered = subscriptions.filter((s) => {
     const term = search.toLowerCase();
@@ -59,21 +64,28 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
     setModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (deleteConfirm === id) {
-      onDelete(id);
-      setDeleteConfirm(null);
-    } else {
-      setDeleteConfirm(id);
-      setTimeout(() => setDeleteConfirm(null), 3000);
-    }
+  const requestDelete = (sub: Subscription) => {
+    setPendingDeleteId(sub.id);
+    setDeleteTargetName(sub.platform);
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDeleteId) return;
+    onDelete(pendingDeleteId);
+    setPendingDeleteId(null);
+    setDeleteTargetName(null);
+  };
+
+  const cancelDelete = () => {
+    setPendingDeleteId(null);
+    setDeleteTargetName(null);
   };
 
   const downloadCSV = () => {
-    const headers = ["Platform", "Plan", "Cost", "Cycle", "Monthly Cost", "Purchase Date", "Expiry Date", "Payment Mode", "Buyer", "Account Holder", "Account Email", "Invoice", "Category"];
+    const headers = ["Platform", "Plan", "Cost", "Cycle", "Monthly Cost", "Expiry Date", "Buyer", "Invoice", "Category"];
     const rows = subscriptions.map((s) => [
       s.platform, s.plan, s.cost, s.cycle, getMonthlyCost(s).toFixed(2),
-      s.purchaseDate, s.expiryDate, s.paymentMode, s.buyer, s.accountHolder, s.accountEmail, s.invoiceFileName || "", s.category,
+      s.expiryDate, s.buyer, s.invoiceFileName || "", s.category,
     ]);
     const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -85,23 +97,41 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
     URL.revokeObjectURL(url);
   };
 
+  const downloadInvoice = (subscription: Subscription) => {
+    if (!subscription.invoiceFileName) return;
+    const content = `Invoice for ${subscription.platform}\nFile: ${subscription.invoiceFileName}`;
+    const blob = new Blob([content], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = subscription.invoiceFileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const openDetail = (subscription: Subscription) => {
+    setDetailTarget(subscription);
+    setPasswordVisible(false);
+    setCopiedField(null);
+    setDetailOpen(true);
+  };
+
+  const copyToClipboard = async (value: string, field: "username" | "password") => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1500);
+  };
+
   return (
     <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Subscriptions</h1>
           <p style={{ color: "#64748b", fontSize: "14px" }}>{subscriptions.length} active subscriptions</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowDateFilters((prev) => !prev)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors"
-            style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#64748b", background: "white" }}
-          >
-            <Filter size={15} />
-            Date Filter
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={downloadCSV}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors"
@@ -122,76 +152,82 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
       </div>
 
       {/* Filters */}
-<div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94a3b8" }} />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search platform, plan, buyer..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl outline-none"
-                style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
-                onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
-              />
-            </div>
-            <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
-              {["All", "Monthly", "Quarterly", "Annual", "Expired"].map((cycle) => (
-                <button
-                  key={cycle}
-                  onClick={() => setFilterCycle(cycle)}
-                  className="px-3 py-1.5 rounded-lg transition-all"
-                  style={{
-                    fontSize: "12px",
-                    fontWeight: filterCycle === cycle ? 600 : 400,
-                    background: filterCycle === cycle ? "white" : "transparent",
-                    color: filterCycle === cycle ? "#0f172a" : "#64748b",
-                    boxShadow: filterCycle === cycle ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                  }}
-                >
-                  {cycle}
-                </button>
-              ))}
-            </div>
-          </div>
-          {showDateFilters && (
-            <div className="grid grid-cols-2 gap-4 max-w-2xl">
-              <div>
-                <p style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>Purchase Date From</p>
-                <input
-                  type="date"
-                  value={purchaseFrom}
-                  onChange={(e) => setPurchaseFrom(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl outline-none"
-                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
-                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
-                />
-              </div>
-              <div>
-                <p style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>Purchase Date To</p>
-                <input
-                  type="date"
-                  value={purchaseTo}
-                  onChange={(e) => setPurchaseTo(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl outline-none"
-                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
-                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
-                />
-              </div>
-            </div>
-          )}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative flex-1 min-w-0 max-w-xl">
+          <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "#94a3b8" }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search platform, plan, buyer..."
+            className="w-full pl-12 pr-4 py-3 rounded-2xl outline-none"
+            style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
+            onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+            onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-slate-100 p-2 border border-slate-200">
+          {["All", "Monthly", "Quarterly", "Annual", "Expired"].map((cycle) => (
+            <button
+              key={cycle}
+              onClick={() => setFilterCycle(cycle)}
+              className="px-4 py-2 rounded-2xl transition-all"
+              style={{
+                fontSize: "12px",
+                fontWeight: filterCycle === cycle ? 700 : 500,
+                background: filterCycle === cycle ? "white" : "transparent",
+                color: filterCycle === cycle ? "#0f172a" : "#64748b",
+                boxShadow: filterCycle === cycle ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+              }}
+            >
+              {cycle}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowDateFilters((prev) => !prev)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors"
+          style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#64748b", background: "white" }}
+        >
+          <Filter size={15} />
+          Date Filter
+        </button>
       </div>
+      {showDateFilters && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 max-w-2xl">
+          <div>
+            <p style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>Purchase Date From</p>
+            <input
+              type="date"
+              value={purchaseFrom}
+              onChange={(e) => setPurchaseFrom(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl outline-none"
+              style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
+              onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+              onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+            />
+          </div>
+          <div>
+            <p style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>Purchase Date To</p>
+            <input
+              type="date"
+              value={purchaseTo}
+              onChange={(e) => setPurchaseTo(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl outline-none"
+              style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
+              onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+              onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Table */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+      <div className="rounded-[28px] overflow-hidden border border-slate-200 shadow-sm" style={{ background: "white" }}>
         <table className="w-full" style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
-              {["Platform", "Plan", "Cost", "Cycle", "Purchase Date", "Expiry", "Payment", "Buyer", "Account Holder", "Account Email", "Invoice", "Status", "Actions"].map((h) => (
-                <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "#94a3b8", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+              {["Platform", "Plan", "Cost", "Cycle", "Expiry", "Buyer", "Invoice", "Status", "Actions"].map((h) => (
+                <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "#000000", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
                   {h.toUpperCase()}
                 </th>
               ))}
@@ -231,13 +267,22 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
                       {sub.cycle}
                     </span>
                   </td>
-                  <td style={{ padding: "14px 16px", fontSize: "12px", color: "#64748b" }}>{sub.purchaseDate}</td>
                   <td style={{ padding: "14px 16px", fontSize: "12px", color: "#64748b" }}>{sub.expiryDate}</td>
-                  <td style={{ padding: "14px 16px", fontSize: "12px", color: "#64748b" }}>{sub.paymentMode}</td>
                   <td style={{ padding: "14px 16px", fontSize: "13px", color: "#0f172a" }}>{sub.buyer}</td>
-                  <td style={{ padding: "14px 16px", fontSize: "13px", color: "#0f172a" }}>{sub.accountHolder || "—"}</td>
-                  <td style={{ padding: "14px 16px", fontSize: "13px", color: "#0f172a" }}>{sub.accountEmail || "—"}</td>
-                  <td style={{ padding: "14px 16px", fontSize: "13px", color: "#64748b" }}>{sub.invoiceFileName || "No invoice"}</td>
+                  <td style={{ padding: "14px 16px", fontSize: "13px", color: "#64748b" }}>
+                    {sub.invoiceFileName ? (
+                      <button
+                        onClick={() => downloadInvoice(sub)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ background: "rgba(59,130,246,0.08)", color: "#2563eb" }}
+                        title="Download invoice"
+                      >
+                        <Download size={14} />
+                      </button>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </td>
                   <td style={{ padding: "14px 16px" }}>
                     <span className="px-2 py-1 rounded-lg" style={{
                       fontSize: "11px", fontWeight: 600,
@@ -250,6 +295,14 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
                   <td style={{ padding: "14px 16px" }}>
                     <div className="flex items-center gap-2">
                       <button
+                        onClick={() => openDetail(sub)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ background: "rgba(14,165,233,0.08)", color: "#0ea5e9" }}
+                        title="View details"
+                      >
+                        <Eye size={13} />
+                      </button>
+                      <button
                         onClick={() => handleEdit(sub)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
                         style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1" }}
@@ -257,10 +310,10 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
                         <Edit2 size={13} />
                       </button>
                       <button
-                        onClick={() => handleDelete(sub.id)}
+                        onClick={() => requestDelete(sub)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                        style={{ background: deleteConfirm === sub.id ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.08)", color: "#ef4444" }}
-                        title={deleteConfirm === sub.id ? "Click again to confirm" : "Delete"}
+                        style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}
+                        title="Delete"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -271,7 +324,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={13} style={{ padding: "48px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>
+                <td colSpan={9} style={{ padding: "48px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>
                   No subscriptions found
                 </td>
               </tr>
@@ -280,12 +333,184 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
         </table>
       </div>
 
+      {detailOpen && detailTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6">
+          <div className="w-full max-w-2xl overflow-hidden rounded-[28px] bg-white shadow-2xl max-h-[85vh]">
+            <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">Subscription details</h2>
+                <p className="text-sm text-slate-500">Key information for the selected platform</p>
+              </div>
+              <button
+                onClick={() => {
+                  setDetailOpen(false);
+                  setDetailTarget(null);
+                  setPasswordVisible(false);
+                  setCopiedField(null);
+                }}
+                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close details"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 py-6 overflow-y-auto max-h-[72vh]">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  ["Platform", detailTarget.platform || "Not available"],
+                  ["Plan", detailTarget.plan || "Not available"],
+                  ["Cost", `$${detailTarget.cost.toFixed(2)}`],
+                  ["Billing cycle", detailTarget.cycle || "Not available"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-950">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  ["Purchase date", detailTarget.purchaseDate || "Not available"],
+                  ["Expiry date", detailTarget.expiryDate || "Not available"],
+                  ["Payment mode", detailTarget.paymentMode || "Not available"],
+                  ["Category", detailTarget.category || "Not available"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-950">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  ["Buyer", detailTarget.buyer || "Not available"],
+                  ["Account holder", detailTarget.accountHolder || "Not available"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-950">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Username / Email</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-950">{detailTarget.accountEmail || "Not available"}</p>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(detailTarget.accountEmail ?? "", "username")}
+                      className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition hover:border-slate-300"
+                      title="Copy username"
+                    >
+                      {copiedField === "username" ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Password</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-950">
+                        {passwordVisible ? detailTarget.accountPassword || "Not available" : detailTarget.accountPassword ? detailTarget.accountPassword.replace(/./g, "•") : "Not available"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setPasswordVisible((current) => !current)}
+                        className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition hover:border-slate-300"
+                        title={passwordVisible ? "Hide password" : "Show password"}
+                      >
+                        {passwordVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                      <button
+                        onClick={() => copyToClipboard(detailTarget.accountPassword || "", "password")}
+                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition hover:border-slate-300"
+                        title="Copy password"
+                      >
+                        {copiedField === "password" ? <Check size={14} /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Invoice</p>
+                  <div className="mt-2 flex items-center justify-between gap-4">
+                    <p className="text-sm font-semibold text-slate-950">{detailTarget.invoiceFileName || "Not available"}</p>
+                    {detailTarget.invoiceFileName ? (
+                      <button
+                        onClick={() => downloadInvoice(detailTarget)}
+                        className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+                      >
+                        <Download size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Status</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-950">
+                    {getDaysUntilExpiry(detailTarget.expiryDate) < 0
+                      ? "Expired"
+                      : getDaysUntilExpiry(detailTarget.expiryDate) === 0
+                      ? "Today"
+                      : `${getDaysUntilExpiry(detailTarget.expiryDate)} days left`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modalOpen && (
         <AddEditModal
           subscription={editTarget}
           onSave={handleSave}
           onClose={() => { setModalOpen(false); setEditTarget(null); }}
         />
+      )}
+
+      {pendingDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-sm rounded-3xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.18)" }}>
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(248,113,113,0.14)" }}>
+                <AlertTriangle size={28} style={{ color: "#ef4444" }} />
+              </div>
+              <h2 style={{ color: "#0f172a", fontSize: "22px", marginBottom: "8px" }}>Delete?</h2>
+              <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px" }}>
+                Are you sure you want to DELETE {deleteTargetName ? `"${deleteTargetName}"` : "this subscription"}?
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={cancelDelete}
+                  className="flex-1 py-3 rounded-xl"
+                  style={{ border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 py-3 rounded-xl text-white"
+                  style={{ background: "#ef4444", fontWeight: 600 }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
