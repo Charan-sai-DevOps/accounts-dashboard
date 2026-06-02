@@ -3,14 +3,28 @@ import {
   Users, Bell, DollarSign, Shield,
   Plus, Trash2, X, Check, UserCheck,
   Clock, Mail, Smartphone, ChevronRight,
-  Search, Edit2, AlertTriangle,
+  Search, Edit2, AlertTriangle, Layers,
 } from "lucide-react";
-import { Subscription, getDaysUntilExpiry } from "../data/subscriptions";
+import { Subscription, getDaysUntilExpiry, Category, categoryColors } from "../data/subscriptions";
 
-type SettingsSection = "users" | "notifications" | "currency" | "2fa";
+type SettingsSection = "profile" | "users" | "notifications" | "currency" | "2fa" | "categories";
 
 interface SettingsPageProps {
   subscriptions: Subscription[];
+  section?: SettingsSection;
+  onSectionChange?: (section: SettingsSection) => void;
+  profile?: {
+    username: string;
+    companyName: string;
+    role: string;
+    email: string;
+  };
+  onUpdateProfile?: (profile: {
+    username: string;
+    companyName: string;
+    role: string;
+    email: string;
+  }) => void;
 }
 
 interface AppUser {
@@ -47,7 +61,9 @@ const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 const settingsNav: { id: SettingsSection; label: string; icon: React.ReactNode; desc: string }[] = [
+  { id: "profile", label: "Profile", icon: <UserCheck size={17} />, desc: "Account profile and settings" },
   { id: "users", label: "User Management", icon: <Users size={17} />, desc: "Manage team members & roles" },
+  { id: "categories", label: "Categories", icon: <Layers size={17} />, desc: "Subscription category groups" },
   { id: "notifications", label: "Notifications", icon: <Bell size={17} />, desc: "Renewal alerts & reminders" },
   { id: "currency", label: "Currency Display", icon: <DollarSign size={17} />, desc: "Set your preferred currency" },
   { id: "2fa", label: "Two-Factor Auth", icon: <Shield size={17} />, desc: "Secure your account" },
@@ -78,8 +94,23 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
-export function SettingsPage({ subscriptions }: SettingsPageProps) {
-  const [section, setSection] = useState<SettingsSection>("users");
+export function SettingsPage({
+  subscriptions,
+  section: propSection,
+  onSectionChange,
+  profile: propProfile,
+  onUpdateProfile,
+}: SettingsPageProps) {
+  const [localSection, setLocalSection] = useState<SettingsSection>("users");
+  const section = propSection !== undefined ? propSection : localSection;
+  const setSection = (s: SettingsSection) => {
+    if (onSectionChange) {
+      onSectionChange(s);
+    } else {
+      setLocalSection(s);
+    }
+  };
+
   const [users, setUsers] = useState<AppUser[]>(initialUsers);
   const [userSearch, setUserSearch] = useState("");
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -87,6 +118,32 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
   const [editUserId, setEditUserId] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"] });
+
+  const [localProfile, setLocalProfile] = useState({
+    username: "Charan Sai",
+    companyName: "Webomind Apps",
+    role: "Admin",
+    email: "Charan@webomindapps.com",
+  });
+  const profile = propProfile !== undefined ? propProfile : localProfile;
+  const setProfile = (newProfile: any) => {
+    if (typeof newProfile === "function") {
+      if (onUpdateProfile) {
+        onUpdateProfile(newProfile(profile));
+      } else {
+        setLocalProfile(newProfile);
+      }
+    } else {
+      if (onUpdateProfile) {
+        onUpdateProfile(newProfile);
+      } else {
+        setLocalProfile(newProfile);
+      }
+    }
+  };
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [reminderLog, setReminderLog] = useState<string[]>([]);
 
   const [builtInNotifs, setBuiltInNotifs] = useState({
@@ -237,6 +294,13 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
     setCustomNotifs((prev) => prev.filter((n) => n.id !== id));
   };
 
+  const handleSaveProfile = () => {
+    if (passwordData.newPassword && passwordData.newPassword !== passwordData.confirmPassword) {
+      return;
+    }
+    setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  };
+
   const handleVerifyCode = () => {
     if (verifyCode.length === 6) {
       setVerifySuccess(true);
@@ -252,6 +316,21 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
   const filteredUsers = users.filter(
     (u) => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
+
+  const categoryOrder: Category[] = Object.keys(categoryColors) as Category[];
+  const categoryPlatforms = categoryOrder.reduce<Record<Category, string[]>>((acc, category) => {
+    acc[category] = [];
+    return acc;
+  }, {} as Record<Category, string[]>);
+
+  subscriptions.forEach((sub) => {
+    if (!categoryPlatforms[sub.category]) {
+      categoryPlatforms[sub.category] = [];
+    }
+    if (!categoryPlatforms[sub.category].includes(sub.platform)) {
+      categoryPlatforms[sub.category].push(sub.platform);
+    }
+  });
 
   const platformOptions = Array.from(new Set(subscriptions.map((s) => s.platform)));
 
@@ -429,6 +508,246 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {section === "profile" && (
+          <div className="flex flex-col gap-6 max-w-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Profile</h1>
+                <p style={{ fontSize: "14px", color: "#64748b" }}>Manage your account details and password</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
+              {/* Profile Card Header with Avatar and Pencil Edit Icon */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-5 mb-5">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold"
+                    style={{
+                      background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                      fontSize: "18px",
+                    }}
+                  >
+                    {profile.username ? profile.username[0].toUpperCase() : "C"}
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#0f172a" }}>{profile.username}</h3>
+                    <p style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>{profile.email}</p>
+                  </div>
+                </div>
+                {!isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
+                    title="Edit Profile"
+                  >
+                    <Edit2 size={15} style={{ color: "#64748b" }} />
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Username</label>
+                  <input
+                    value={profile.username}
+                    onChange={(e) => setProfile((p: any) => ({ ...p, username: e.target.value }))}
+                    disabled={!isEditing}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    style={{
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "13px",
+                      color: !isEditing ? "#64748b" : "#0f172a",
+                      background: !isEditing ? "#f8fafc" : "white",
+                      cursor: !isEditing ? "not-allowed" : "text",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Company Name</label>
+                  <input
+                    value={profile.companyName}
+                    onChange={(e) => setProfile((p: any) => ({ ...p, companyName: e.target.value }))}
+                    disabled={!isEditing}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    style={{
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "13px",
+                      color: !isEditing ? "#64748b" : "#0f172a",
+                      background: !isEditing ? "#f8fafc" : "white",
+                      cursor: !isEditing ? "not-allowed" : "text",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Role</label>
+                  <input
+                    value={profile.role}
+                    readOnly
+                    disabled={true}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 outline-none"
+                    style={{
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "13px",
+                      color: "#64748b",
+                      background: "#f8fafc",
+                      cursor: "not-allowed",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Email ID</label>
+                  <input
+                    value={profile.email}
+                    onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))}
+                    disabled={!isEditing}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    style={{
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "13px",
+                      color: !isEditing ? "#64748b" : "#0f172a",
+                      background: !isEditing ? "#f8fafc" : "white",
+                      cursor: !isEditing ? "not-allowed" : "text",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
+              <h3 style={{ color: "#0f172a", marginBottom: "12px" }}>Change Password</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Current Password</label>
+                  <input
+                    type="password"
+                    value={passwordData.currentPassword}
+                    onChange={(e) => setPasswordData((p) => ({ ...p, currentPassword: e.target.value }))}
+                    disabled={!isEditing}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    style={{
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "13px",
+                      color: !isEditing ? "#64748b" : "#0f172a",
+                      background: !isEditing ? "#f8fafc" : "white",
+                      cursor: !isEditing ? "not-allowed" : "text",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>New Password</label>
+                  <input
+                    type="password"
+                    value={passwordData.newPassword}
+                    onChange={(e) => setPasswordData((p) => ({ ...p, newPassword: e.target.value }))}
+                    disabled={!isEditing}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    style={{
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "13px",
+                      color: !isEditing ? "#64748b" : "#0f172a",
+                      background: !isEditing ? "#f8fafc" : "white",
+                      cursor: !isEditing ? "not-allowed" : "text",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Confirm Password</label>
+                  <input
+                    type="password"
+                    value={passwordData.confirmPassword}
+                    onChange={(e) => setPasswordData((p) => ({ ...p, confirmPassword: e.target.value }))}
+                    disabled={!isEditing}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    style={{
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "13px",
+                      color: !isEditing ? "#64748b" : "#0f172a",
+                      background: !isEditing ? "#f8fafc" : "white",
+                      cursor: !isEditing ? "not-allowed" : "text",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {isEditing && (
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+                  }}
+                  className="px-4 py-2 rounded-xl"
+                  style={{ border: "1.5px solid #e2e8f0", background: "white", color: "#64748b", fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSaveProfile();
+                    setIsEditing(false);
+                  }}
+                  className="px-4 py-2 rounded-xl text-white"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontWeight: 600 }}
+                >
+                  Save Profile
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {section === "categories" && (
+          <div className="flex flex-col gap-6 max-w-3xl">
+            <div>
+              <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Categories</h1>
+              <p style={{ fontSize: "14px", color: "#64748b" }}>View all categories and associated platforms</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              {categoryOrder.map((category) => (
+                <div key={category} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <p style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{category}</p>
+                      <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>{categoryPlatforms[category]?.length || 0} platform{categoryPlatforms[category]?.length === 1 ? "" : "s"}</p>
+                    </div>
+                    <div className="px-3 py-1 rounded-full" style={{ background: `${categoryColors[category]}22`, color: categoryColors[category], fontWeight: 700, fontSize: "12px" }}>
+                      {categoryColors[category] ? category : ""}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {categoryPlatforms[category]?.length ? (
+                      categoryPlatforms[category].map((platform) => (
+                        <span key={platform} className="px-3 py-1 rounded-full" style={{ background: "#f8fafc", color: "#334155", fontSize: "12px" }}>
+                          {platform}
+                        </span>
+                      ))
+                    ) : (
+                      <p style={{ fontSize: "13px", color: "#94a3b8" }}>No platforms assigned.</p>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

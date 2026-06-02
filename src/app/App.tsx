@@ -13,6 +13,13 @@ type Page = "dashboard" | "subscriptions" | "reports" | "renewals" | "settings";
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
+  const [settingsSection, setSettingsSection] = useState<any>("users");
+  const [profile, setProfile] = useState({
+    username: "Charan Sai",
+    companyName: "Webomind Apps",
+    role: "Admin",
+    email: "Charan@webomindapps.com"
+  });
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +100,15 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-      <Sidebar activePage={page} onNavigate={setPage} />
+      <Sidebar
+        activePage={page}
+        onNavigate={setPage}
+        onNavigateToProfile={() => {
+          setPage("settings");
+          setSettingsSection("profile");
+        }}
+        profile={profile}
+      />
       <main className="flex-1 overflow-y-auto">
         {page === "dashboard" && (
           <Dashboard
@@ -110,8 +125,16 @@ export default function App() {
           />
         )}
         {page === "reports" && <Reports subscriptions={subscriptions} />}
-        {page === "renewals" && <Renewals subscriptions={subscriptions} />}
-        {page === "settings" && <SettingsPage subscriptions={subscriptions} />}
+        {page === "renewals" && <Renewals subscriptions={subscriptions} onEdit={handleEdit} />}
+        {page === "settings" && (
+          <SettingsPage
+            subscriptions={subscriptions}
+            section={settingsSection}
+            onSectionChange={setSettingsSection}
+            profile={profile}
+            onUpdateProfile={setProfile}
+          />
+        )}
       </main>
     </div>
   );

@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
-import { Bell, CheckCircle, AlertTriangle, Clock } from "lucide-react";
+import { Bell, CheckCircle, AlertTriangle, Clock, MoreVertical } from "lucide-react";
 import { Subscription, getDaysUntilExpiry, getClearbitLogoUrl } from "../data/subscriptions";
 
 interface RenewalsProps {
   subscriptions: Subscription[];
+  onEdit?: (id: string, sub: Omit<Subscription, "id">) => void;
 }
 
-export function Renewals({ subscriptions }: RenewalsProps) {
+export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
   const [view, setView] = useState<"upcoming" | "history">("upcoming");
   const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
   const handleLogoError = (subscriptionId: string) => {
     setFailedLogos((prev) => new Set(prev).add(subscriptionId));
@@ -20,24 +22,26 @@ export function Renewals({ subscriptions }: RenewalsProps) {
   );
 
   const historyItems = useMemo(
-    () => sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) < 0),
+    () => sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) < 0 || s.renewalStatus === "Paid" || s.renewalStatus === "Failed" || s.renewalStatus === "Cancelled"),
     [sorted]
   );
 
   const groups = useMemo(() => {
     return {
-      overdue: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) < 0),
-      today: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) === 0),
-      week: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 0 && getDaysUntilExpiry(s.expiryDate) <= 7),
-      month: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 7 && getDaysUntilExpiry(s.expiryDate) <= 30),
-      future: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 30),
+      overdue: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) < 0 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
+      today: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) === 0 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
+      week: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 0 && getDaysUntilExpiry(s.expiryDate) <= 7 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
+      month: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 7 && getDaysUntilExpiry(s.expiryDate) <= 30 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
+      future: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 30 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
     };
   }, [sorted]);
 
   const [historyFilter, setHistoryFilter] = useState<"All" | "Paid" | "Failed" | "Cancelled">("All");
 
   const totalRenewingThisMonth = useMemo(
-    () => [...groups.today, ...groups.week, ...groups.month].reduce((sum, s) => sum + s.cost, 0),
+    () => [...groups.today, ...groups.week, ...groups.month]
+      .filter((s) => s.renewalStatus !== "Cancelled" && s.renewalStatus !== "Paid")
+      .reduce((sum, s) => sum + s.cost, 0),
     [groups]
   );
 
@@ -47,6 +51,39 @@ export function Renewals({ subscriptions }: RenewalsProps) {
       .reduce((sum, s) => sum + s.cost, 0),
     [historyItems]
   );
+
+  const handleStatusSelect = (sub: Subscription, status: "Paid" | "Failed" | "Cancelled") => {
+    if (!onEdit) return;
+
+    let updatedExpiryDate = sub.expiryDate;
+    let updatedPurchaseDate = sub.purchaseDate;
+
+    if (status === "Paid") {
+      const currentDate = new Date(sub.expiryDate);
+      if (sub.cycle === "Monthly") {
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      } else if (sub.cycle === "Quarterly") {
+        currentDate.setMonth(currentDate.getMonth() + 3);
+      } else if (sub.cycle === "Annual") {
+        currentDate.setFullYear(currentDate.getFullYear() + 1);
+      }
+      updatedExpiryDate = currentDate.toISOString().split("T")[0];
+      updatedPurchaseDate = sub.expiryDate; // transaction date is the renewal date
+    }
+
+    const { id, ...subWithoutId } = sub;
+    const updatedSub: Omit<Subscription, "id"> = {
+      ...subWithoutId,
+      renewalStatus: status,
+      expiryDate: updatedExpiryDate,
+      purchaseDate: updatedPurchaseDate,
+    };
+
+    onEdit(sub.id, updatedSub);
+
+    setView("history");
+    setHistoryFilter(status);
+  };
 
   const filteredHistoryItems = useMemo(() => {
     if (historyFilter === "All") return historyItems;
@@ -71,6 +108,8 @@ export function Renewals({ subscriptions }: RenewalsProps) {
     const days = getDaysUntilExpiry(sub.expiryDate);
     const urgent = days <= 7 && days >= 0;
     const overdue = days < 0;
+    const isDropdownOpen = activeDropdownId === sub.id;
+
     return (
       <div
         className="flex items-center justify-between p-4 rounded-[16px] transition-all"
@@ -115,7 +154,7 @@ export function Renewals({ subscriptions }: RenewalsProps) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 relative">
           <div className="text-right">
             <p style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>${sub.cost.toFixed(2)}</p>
             <p style={{ fontSize: "11px", color: "#94a3b8" }}>{sub.expiryDate}</p>
@@ -133,6 +172,58 @@ export function Renewals({ subscriptions }: RenewalsProps) {
           >
             {overdue ? <AlertTriangle size={12} /> : urgent ? <Clock size={12} /> : <CheckCircle size={12} />}
             {overdue ? `${Math.abs(days)}d ago` : days === 0 ? "Today" : `${days}d left`}
+          </div>
+
+          {/* Three dots Settings Option */}
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveDropdownId(isDropdownOpen ? null : sub.id);
+              }}
+              className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600 cursor-pointer"
+              title="Settings"
+            >
+              <MoreVertical size={16} />
+            </button>
+            
+            {isDropdownOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveDropdownId(null);
+                  }}
+                />
+                <div
+                  className="absolute right-0 mt-1 w-32 rounded-xl bg-white border border-slate-200 shadow-xl z-50 py-1"
+                  style={{
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)"
+                  }}
+                >
+                  {[
+                    { value: "Paid" as const, label: "Paid", color: "#10b981" },
+                    { value: "Failed" as const, label: "Failed", color: "#ef4444" },
+                    { value: "Cancelled" as const, label: "Cancelled", color: "#64748b" }
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStatusSelect(sub, opt.value);
+                        setActiveDropdownId(null);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 transition-colors text-xs font-semibold flex items-center gap-2 cursor-pointer"
+                      style={{ color: opt.color }}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: opt.color }} />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

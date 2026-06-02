@@ -15,7 +15,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
   const [filterCycle, setFilterCycle] = useState("All");
   const [purchaseFrom, setPurchaseFrom] = useState("");
   const [purchaseTo, setPurchaseTo] = useState("");
-  const [showDateFilters, setShowDateFilters] = useState(true);
+  const [showDateFilters, setShowDateFilters] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Subscription | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);

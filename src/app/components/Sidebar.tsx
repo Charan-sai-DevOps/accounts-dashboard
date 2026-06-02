@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   LayoutDashboard,
   CreditCard,
@@ -6,6 +7,7 @@ import {
   Settings,
   ChevronRight,
   Zap,
+  LogOut,
 } from "lucide-react";
 
 type Page =
@@ -18,6 +20,11 @@ type Page =
 interface SidebarProps {
   activePage: Page;
   onNavigate: (page: Page) => void;
+  onNavigateToProfile?: () => void;
+  profile?: {
+    username: string;
+    email: string;
+  };
 }
 
 const navItems: {
@@ -55,7 +62,15 @@ const navItems: {
 export function Sidebar({
   activePage,
   onNavigate,
+  onNavigateToProfile,
+  profile,
 }: SidebarProps) {
+  const [showLogout, setShowLogout] = useState(false);
+
+  const username = profile?.username || "Charan Sai";
+  const email = profile?.email || "Charan@webomindapps.com";
+  const initialLetter = username ? username[0].toUpperCase() : "C";
+
   return (
     <aside
       className="w-64 min-h-screen flex flex-col"
@@ -160,8 +175,35 @@ export function Sidebar({
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-5 border-t border-white/10">
-        <div className="flex items-center gap-3">
+      <div 
+        className="px-5 py-5 border-t border-white/10 relative"
+        onMouseEnter={() => setShowLogout(true)}
+        onMouseLeave={() => setShowLogout(false)}
+      >
+        {showLogout && (
+          <div
+            className="absolute bottom-16 left-5 px-4 py-2.5 rounded-xl border backdrop-blur-md transition-all duration-200"
+            style={{
+              background: "rgba(15, 23, 42, 0.95)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.3)",
+              zIndex: 50,
+            }}
+          >
+            <button
+              onClick={() => alert("Logged out successfully!")}
+              className="flex items-center gap-2 text-rose-400 hover:text-rose-300 transition-colors text-xs font-semibold"
+            >
+              <LogOut size={13} />
+              Logout
+            </button>
+          </div>
+        )}
+
+        <div
+          onClick={onNavigateToProfile}
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+        >
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-white"
             style={{
@@ -171,7 +213,7 @@ export function Sidebar({
               fontWeight: 700,
             }}
           >
-            C
+            {initialLetter}
           </div>
           <div>
             <p
@@ -181,10 +223,10 @@ export function Sidebar({
                 fontWeight: 500,
               }}
             >
-              Charan Sai
+              {username}
             </p>
             <p style={{ fontSize: "11px", color: "#64748b" }}>
-              Charan@webomindapps.com
+              {email}
             </p>
           </div>
         </div>

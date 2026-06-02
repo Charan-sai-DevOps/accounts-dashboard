@@ -11,6 +11,71 @@ interface ReportsProps {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+interface CategoryTooltipProps {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+  subscriptions: Subscription[];
+}
+
+function CategoryTooltip({ active, payload, label, subscriptions }: CategoryTooltipProps) {
+  if (active && payload && payload.length) {
+    const categorySubs = subscriptions
+      .filter((sub) => sub.category === label)
+      .map((sub) => ({
+        platform: sub.platform,
+        cost: getMonthlyCost(sub),
+        color: sub.color || "#6366f1",
+      }))
+      .sort((a, b) => b.cost - a.cost);
+
+    const totalCategorySpend = categorySubs.reduce((acc, curr) => acc + curr.cost, 0);
+
+    return (
+      <div 
+        className="rounded-2xl p-4 shadow-xl border backdrop-blur-md"
+        style={{
+          background: "rgba(15, 23, 42, 0.95)",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
+          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)",
+          minWidth: "220px",
+          color: "white",
+        }}
+      >
+        <p style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {label}
+        </p>
+        <div className="flex flex-col gap-2.5">
+          {categorySubs.map((sub, idx) => (
+            <div key={idx} className="flex items-center justify-between gap-6">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
+                  style={{ background: sub.color }} 
+                />
+                <span style={{ fontSize: "12px", fontWeight: 500, color: "#f8fafc" }}>
+                  {sub.platform}
+                </span>
+              </div>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#cbd5e1" }}>
+                ${sub.cost.toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div style={{ margin: "10px 0 6px 0", height: "1px", background: "rgba(255, 255, 255, 0.1)" }} />
+        <div className="flex items-center justify-between">
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#94a3b8" }}>Total Spend</span>
+          <span style={{ fontSize: "13px", fontWeight: 800, color: "#38bdf8" }}>
+            ${totalCategorySpend.toFixed(2)}/mo
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export function Reports({ subscriptions }: ReportsProps) {
   const totalMonthly = useMemo(() => subscriptions.reduce((s, sub) => s + getMonthlyCost(sub), 0), [subscriptions]);
   const totalAnnual = useMemo(() => subscriptions.reduce((s, sub) => s + getAnnualCost(sub), 0), [subscriptions]);
@@ -132,7 +197,7 @@ export function Reports({ subscriptions }: ReportsProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" />
               <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
-              <Tooltip formatter={(v: number) => [`$${v.toFixed(2)}`, "Monthly"]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+              <Tooltip content={<CategoryTooltip subscriptions={subscriptions} />} />
               <Bar dataKey="monthly" radius={[6, 6, 0, 0]}>
                 {categoryData.map((entry) => (
                   <Cell key={entry.name} fill={categoryColors[entry.name as keyof typeof categoryColors] || "#6366f1"} />
