@@ -3,8 +3,8 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { TrendingUp, CreditCard, AlertTriangle, DollarSign, ArrowUpRight } from "lucide-react";
-import { Subscription, getMonthlyCost, getAnnualCost, getDaysUntilExpiry, categoryColors, getClearbitLogoUrl } from "../data/subscriptions";
+import { TrendingUp, CreditCard, AlertTriangle, DollarSign, ArrowUpRight, IndianRupee } from "lucide-react";
+import { Subscription, getMonthlyCost, getAnnualCost, getINRMonthlyCost, getINRAnnualCost, getDaysUntilExpiry, categoryColors, getClearbitLogoUrl } from "../data/subscriptions";
 
 interface DashboardProps {
   subscriptions: Subscription[];
@@ -25,6 +25,14 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
   );
   const totalAnnual = useMemo(
     () => subscriptions.reduce((sum, s) => sum + getAnnualCost(s), 0),
+    [subscriptions]
+  );
+  const totalMonthlyINR = useMemo(
+    () => subscriptions.reduce((sum, s) => sum + getINRMonthlyCost(s), 0),
+    [subscriptions]
+  );
+  const totalAnnualINR = useMemo(
+    () => subscriptions.reduce((sum, s) => sum + getINRAnnualCost(s), 0),
     [subscriptions]
   );
   const upcomingCount = useMemo(
@@ -72,6 +80,14 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
       bg: "rgba(99,102,241,0.12)",
     },
     {
+      label: "Monthly Spend (INR)",
+      value: `₹${totalMonthlyINR.toFixed(0)}`,
+      sub: `₹${totalAnnualINR.toFixed(0)}/year`,
+      icon: <IndianRupee size={20} />,
+      color: "#0ea5e9",
+      bg: "rgba(14,165,233,0.12)",
+    },
+    {
       label: "Active Subscriptions",
       value: `${subscriptions.length}`,
       sub: "Across all platforms",
@@ -89,8 +105,8 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
     },
     {
       label: "Annual Spend",
-      value: `$${totalAnnual.toFixed(0)}`,
-      sub: `Avg $${(totalAnnual / 12).toFixed(0)}/mo`,
+      value: `₹${totalAnnualINR.toFixed(0)}`,
+      sub: `$${totalAnnual.toFixed(0)} · Avg ₹${(totalAnnualINR / 12).toFixed(0)}/mo`,
       icon: <TrendingUp size={20} />,
       color: "#ec4899",
       bg: "rgba(236,72,153,0.12)",
@@ -111,7 +127,7 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         {stats.map((s) => (
           <div key={s.label} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div className="flex items-center justify-between mb-4">
