@@ -1,5 +1,5 @@
 const LOGODEV_SEARCH_ENDPOINT = "https://api.logo.dev/search";
-const LOGODEV_SECRET_KEY = process.env.LOGODEV_SECRET_KEY || "sk_BtVHwUoqTEyk4YwAwxbAcQ";
+const LOGODEV_SECRET_KEY = process.env.LOGODEV_SECRET_KEY;
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "GET") {

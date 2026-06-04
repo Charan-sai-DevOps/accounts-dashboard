@@ -7,8 +7,7 @@ import {
   getGoogleFaviconUrl,
 } from "../data/subscriptions";
 
-const LOGO_DEV_PUBLISHABLE_KEY =
-  import.meta.env.VITE_LOGODEV_PUBLISHABLE_KEY || "pk_Ayi1izciTGGDgwz5n1STxA";
+const LOGO_DEV_PUBLISHABLE_KEY = import.meta.env.VITE_LOGODEV_PUBLISHABLE_KEY as string | undefined;
 
 export function usePlatformLogo() {
   const [logoFallbackStage, setLogoFallbackStage] = useState<Record<string, number>>({});

@@ -26,10 +26,10 @@ export default function App() {
     }
   });
   const [profile, setProfile] = useState({
-    username: "Charan Sai",
-    companyName: "Webomind Apps",
-    role: "Admin",
-    email: "charan.sai@webomindapps.com"
+    username: "",
+    companyName: "",
+    role: "",
+    email: ""
   });
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [categories, setCategories] = useState<Category[]>(() => {

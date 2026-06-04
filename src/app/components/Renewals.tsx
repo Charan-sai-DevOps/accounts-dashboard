@@ -25,21 +25,20 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
   );
 
   const groups = useMemo(() => {
+    const isResolved = (s: Subscription) => s.renewalStatus === "Paid" || s.renewalStatus === "Failed" || s.renewalStatus === "Cancelled";
     return {
-      overdue: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) < 0 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
-      today: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) === 0 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
-      week: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 0 && getDaysUntilExpiry(s.expiryDate) <= 7 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
-      month: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 7 && getDaysUntilExpiry(s.expiryDate) <= 30 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
-      future: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 30 && s.renewalStatus !== "Paid" && s.renewalStatus !== "Cancelled"),
+      overdue: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) < 0 && !isResolved(s)),
+      today: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) === 0 && !isResolved(s)),
+      week: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 0 && getDaysUntilExpiry(s.expiryDate) <= 7 && !isResolved(s)),
+      month: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 7 && getDaysUntilExpiry(s.expiryDate) <= 30 && !isResolved(s)),
+      future: sorted.filter((s) => getDaysUntilExpiry(s.expiryDate) > 30 && !isResolved(s)),
     };
   }, [sorted]);
 
   const [historyFilter, setHistoryFilter] = useState<"All" | "Paid" | "Failed" | "Cancelled" | "Autopay">("All");
 
   const totalRenewingThisMonth = useMemo(
-    () => [...groups.today, ...groups.week, ...groups.month]
-      .filter((s) => s.renewalStatus !== "Cancelled" && s.renewalStatus !== "Paid")
-      .reduce((sum, s) => sum + s.cost, 0),
+    () => [...groups.today, ...groups.week, ...groups.month].reduce((sum, s) => sum + s.cost, 0),
     [groups]
   );
 

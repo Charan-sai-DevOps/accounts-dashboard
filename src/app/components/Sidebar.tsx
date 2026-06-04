@@ -82,9 +82,9 @@ export function Sidebar({
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const username = profile?.username || "Charan Sai";
-  const email = profile?.email || "charan.sai@webomindapps.com";
-  const initialLetter = username ? username[0].toUpperCase() : "C";
+  const username = profile?.username || "";
+  const email = profile?.email || "";
+  const initialLetter = username ? username[0].toUpperCase() : "?";
 
   return (
     <aside
