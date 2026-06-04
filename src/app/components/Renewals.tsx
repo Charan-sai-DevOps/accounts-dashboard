@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Bell, CheckCircle, AlertTriangle, Clock, MoreVertical } from "lucide-react";
-import { Subscription, getDaysUntilExpiry, getClearbitLogoUrl } from "../data/subscriptions";
+import { Subscription, getDaysUntilExpiry, getClearbitLogoUrl, getNextExpiryDate } from "../data/subscriptions";
 
 interface RenewalsProps {
   subscriptions: Subscription[];
@@ -11,6 +11,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
   const [view, setView] = useState<"upcoming" | "history">("upcoming");
   const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{ sub: Subscription; status: "Paid" | "Failed" | "Cancelled" } | null>(null);
 
   const handleLogoError = (subscriptionId: string) => {
     setFailedLogos((prev) => new Set(prev).add(subscriptionId));
@@ -36,7 +37,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
     };
   }, [sorted]);
 
-  const [historyFilter, setHistoryFilter] = useState<"All" | "Paid" | "Failed" | "Cancelled">("All");
+  const [historyFilter, setHistoryFilter] = useState<"All" | "Paid" | "Failed" | "Cancelled" | "Autopay">("All");
 
   const totalRenewingThisMonth = useMemo(
     () => [...groups.today, ...groups.week, ...groups.month]
@@ -59,15 +60,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
     let updatedPurchaseDate = sub.purchaseDate;
 
     if (status === "Paid") {
-      const currentDate = new Date(sub.expiryDate);
-      if (sub.cycle === "Monthly") {
-        currentDate.setMonth(currentDate.getMonth() + 1);
-      } else if (sub.cycle === "Quarterly") {
-        currentDate.setMonth(currentDate.getMonth() + 3);
-      } else if (sub.cycle === "Annual") {
-        currentDate.setFullYear(currentDate.getFullYear() + 1);
-      }
-      updatedExpiryDate = currentDate.toISOString().split("T")[0];
+      updatedExpiryDate = getNextExpiryDate(sub);
       updatedPurchaseDate = sub.expiryDate; // transaction date is the renewal date
     }
 
@@ -85,7 +78,15 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
     setHistoryFilter(status);
   };
 
+  const handleStatusConfirm = () => {
+    if (!pendingStatusChange) return;
+    handleStatusSelect(pendingStatusChange.sub, pendingStatusChange.status);
+    setPendingStatusChange(null);
+    setActiveDropdownId(null);
+  };
+
   const filteredHistoryItems = useMemo(() => {
+    if (historyFilter === "Autopay") return sorted.filter((s) => s.autoPay);
     if (historyFilter === "All") return historyItems;
     return historyItems.filter((s) => (s.renewalStatus || "Paid") === historyFilter);
   }, [historyItems, historyFilter]);
@@ -145,12 +146,21 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
               <p style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a" }}>{sub.platform}</p>
               <span className="px-2 py-0.5 rounded-md" style={{ fontSize: "10px", fontWeight: 600, background: "#f1f5f9", color: "#64748b" }}>{sub.plan}</span>
             </div>
-            <div className="flex items-center gap-3 mt-1">
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>{sub.cycle}</span>
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>·</span>
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>{sub.paymentMode}</span>
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>·</span>
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>Buyer: {sub.buyer}</span>
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 700, background: "#eef2ff", color: "#6366f1" }}>
+                {sub.cycle}
+              </span>
+              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 700, background: "#f1f5f9", color: "#475569" }}>
+                {sub.paymentMode}
+              </span>
+              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 700, background: "#f8fafc", color: "#334155" }}>
+                Buyer: {sub.buyer}
+              </span>
+              {sub.autoPay && (
+                <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 700, background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+                  Autopay
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -211,7 +221,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
                       key={opt.value}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleStatusSelect(sub, opt.value);
+                        setPendingStatusChange({ sub, status: opt.value });
                         setActiveDropdownId(null);
                       }}
                       className="w-full text-left px-4 py-2 hover:bg-slate-50 transition-colors text-xs font-semibold flex items-center gap-2 cursor-pointer"
@@ -307,15 +317,15 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
             <div className="inline-flex items-center gap-3 text-sm text-slate-600">
               <span className="font-medium">Filter:</span>
               <div className="inline-flex items-center gap-2 rounded-[16px] bg-slate-100 p-1">
-                {["All", "Paid", "Failed", "Cancelled"].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setHistoryFilter(status as "All" | "Paid" | "Failed" | "Cancelled")}
-                    className="px-4 py-2 rounded-[16px] transition-all"
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: historyFilter === status ? 700 : 500,
-                      background: historyFilter === status ? "white" : "transparent",
+                  {["All", "Paid", "Failed", "Cancelled", "Autopay"].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setHistoryFilter(status as "All" | "Paid" | "Failed" | "Cancelled" | "Autopay")}
+                      className="px-4 py-2 rounded-[16px] transition-all"
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: historyFilter === status ? 700 : 500,
+                        background: historyFilter === status ? "white" : "transparent",
                       color: historyFilter === status ? "#0f172a" : "#64748b",
                     }}
                   >
@@ -381,6 +391,35 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
           </div>
         )}
       </div>
+
+      {pendingStatusChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-md rounded-3xl overflow-hidden bg-white shadow-2xl">
+            <div className="p-6">
+              <h2 style={{ color: "#0f172a", fontSize: "20px", marginBottom: "8px" }}>Confirm status update</h2>
+              <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "24px", lineHeight: 1.5 }}>
+                Are you sure you want to mark {pendingStatusChange.sub.platform} as {pendingStatusChange.status.toLowerCase()}?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setPendingStatusChange(null)}
+                  className="flex-1 py-3 rounded-xl"
+                  style={{ border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontWeight: 600 }}
+                >
+                  No
+                </button>
+                <button
+                  onClick={handleStatusConfirm}
+                  className="flex-1 py-3 rounded-xl text-white"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontWeight: 600 }}
+                >
+                  Yes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

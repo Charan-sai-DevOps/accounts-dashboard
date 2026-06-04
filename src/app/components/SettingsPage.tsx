@@ -5,12 +5,16 @@ import {
   Clock, Mail, Smartphone, ChevronRight,
   Search, Edit2, AlertTriangle, Layers,
 } from "lucide-react";
-import { Subscription, getDaysUntilExpiry, Category, categoryColors } from "../data/subscriptions";
+import { Subscription, getDaysUntilExpiry, Category, Team, categoryColors, getTeamIdentity } from "../data/subscriptions";
 
-type SettingsSection = "profile" | "users" | "notifications" | "currency" | "2fa" | "categories";
+type SettingsSection = "profile" | "users" | "notifications" | "currency" | "2fa" | "categories" | "teams";
 
 interface SettingsPageProps {
   subscriptions: Subscription[];
+  categories: Category[];
+  onCreateCategory: (category: string) => void;
+  teams: Team[];
+  onCreateTeam: (team: string) => void;
   section?: SettingsSection;
   onSectionChange?: (section: SettingsSection) => void;
   profile?: {
@@ -64,6 +68,7 @@ const settingsNav: { id: SettingsSection; label: string; icon: React.ReactNode; 
   { id: "profile", label: "Profile", icon: <UserCheck size={17} />, desc: "Account profile and settings" },
   { id: "users", label: "User Management", icon: <Users size={17} />, desc: "Manage team members & roles" },
   { id: "categories", label: "Categories", icon: <Layers size={17} />, desc: "Subscription category groups" },
+  { id: "teams", label: "Teams", icon: <Users size={17} />, desc: "Manage subscription teams" },
   { id: "notifications", label: "Notifications", icon: <Bell size={17} />, desc: "Renewal alerts & reminders" },
   { id: "currency", label: "Currency Display", icon: <DollarSign size={17} />, desc: "Set your preferred currency" },
   { id: "2fa", label: "Two-Factor Auth", icon: <Shield size={17} />, desc: "Secure your account" },
@@ -96,6 +101,10 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 
 export function SettingsPage({
   subscriptions,
+  categories,
+  onCreateCategory,
+  teams,
+  onCreateTeam,
   section: propSection,
   onSectionChange,
   profile: propProfile,
@@ -118,12 +127,14 @@ export function SettingsPage({
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
   const [editUserId, setEditUserId] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"] });
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   const [localProfile, setLocalProfile] = useState({
     username: "Charan Sai",
     companyName: "Webomind Apps",
     role: "Admin",
-    email: "Charan@webomindapps.com",
+    email: "charan.sai@webomindapps.com",
   });
   const profile = propProfile !== undefined ? propProfile : localProfile;
   const setProfile = (newProfile: any) => {
@@ -144,6 +155,7 @@ export function SettingsPage({
 
   const [isEditing, setIsEditing] = useState(false);
   const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [profileSaveMessage, setProfileSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [reminderLog, setReminderLog] = useState<string[]>([]);
 
   const [builtInNotifs, setBuiltInNotifs] = useState({
@@ -156,6 +168,8 @@ export function SettingsPage({
   const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([]);
   const [showAddNotif, setShowAddNotif] = useState(false);
   const [notifForm, setNotifForm] = useState({ email: "", platform: "", reminder: REMINDER_OPTIONS[0] });
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
 
   const [primaryCurrency, setPrimaryCurrency] = useState<"INR" | "USD">("INR");
 
@@ -294,11 +308,70 @@ export function SettingsPage({
     setCustomNotifs((prev) => prev.filter((n) => n.id !== id));
   };
 
-  const handleSaveProfile = () => {
-    if (passwordData.newPassword && passwordData.newPassword !== passwordData.confirmPassword) {
+  const handleCreateCategory = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    onCreateCategory(trimmed);
+    setNewCategoryName("");
+    setShowCreateCategory(false);
+  };
+
+  const handleCreateTeam = () => {
+    const trimmed = newTeamName.trim();
+    if (!trimmed) return;
+    onCreateTeam(trimmed);
+    setNewTeamName("");
+    setShowCreateTeam(false);
+  };
+
+  const handleSaveProfile = async () => {
+    setProfileSaveMessage(null);
+
+    const hasPasswordChange =
+      passwordData.currentPassword.length > 0 ||
+      passwordData.newPassword.length > 0 ||
+      passwordData.confirmPassword.length > 0;
+
+    if (hasPasswordChange && passwordData.newPassword !== passwordData.confirmPassword) {
+      setProfileSaveMessage({ type: "error", text: "New password and confirm password do not match." });
       return;
     }
-    setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+
+    if (hasPasswordChange && (!passwordData.currentPassword || !passwordData.newPassword)) {
+      setProfileSaveMessage({ type: "error", text: "Please enter your current password and a new password." });
+      return;
+    }
+
+    try {
+      if (onUpdateProfile) {
+        await onUpdateProfile(profile);
+      }
+
+      if (hasPasswordChange) {
+        const response = await fetch("/api/auth", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            currentPassword: passwordData.currentPassword,
+            newPassword: passwordData.newPassword,
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.message || "Unable to update password.");
+        }
+      }
+
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setIsEditing(false);
+      setProfileSaveMessage({ type: "success", text: "Profile updated successfully." });
+    } catch (error) {
+      setProfileSaveMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Unable to save profile.",
+      });
+    }
   };
 
   const handleVerifyCode = () => {
@@ -317,7 +390,7 @@ export function SettingsPage({
     (u) => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
 
-  const categoryOrder: Category[] = Object.keys(categoryColors) as Category[];
+  const categoryOrder: Category[] = categories;
   const categoryPlatforms = categoryOrder.reduce<Record<Category, string[]>>((acc, category) => {
     acc[category] = [];
     return acc;
@@ -704,8 +777,7 @@ export function SettingsPage({
                 <button
                   type="button"
                   onClick={() => {
-                    handleSaveProfile();
-                    setIsEditing(false);
+                    void handleSaveProfile();
                   }}
                   className="px-4 py-2 rounded-xl text-white"
                   style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontWeight: 600 }}
@@ -714,14 +786,36 @@ export function SettingsPage({
                 </button>
               </div>
             )}
+            {profileSaveMessage && (
+              <div
+                className="rounded-2xl px-4 py-3 text-sm"
+                style={{
+                  background: profileSaveMessage.type === "success" ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
+                  color: profileSaveMessage.type === "success" ? "#10b981" : "#ef4444",
+                  border: `1px solid ${profileSaveMessage.type === "success" ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.18)"}`,
+                }}
+              >
+                {profileSaveMessage.text}
+              </div>
+            )}
           </div>
         )}
 
         {section === "categories" && (
           <div className="flex flex-col gap-6 max-w-3xl">
-            <div>
-              <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Categories</h1>
-              <p style={{ fontSize: "14px", color: "#64748b" }}>View all categories and associated platforms</p>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Categories</h1>
+                <p style={{ fontSize: "14px", color: "#64748b" }}>View all categories and associated platforms</p>
+              </div>
+              <button
+                onClick={() => setShowCreateCategory(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white"
+                style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.3)" }}
+              >
+                <Plus size={15} />
+                Create Category
+              </button>
             </div>
             <div className="grid grid-cols-1 gap-4">
               {categoryOrder.map((category) => (
@@ -731,9 +825,9 @@ export function SettingsPage({
                       <p style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{category}</p>
                       <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>{categoryPlatforms[category]?.length || 0} platform{categoryPlatforms[category]?.length === 1 ? "" : "s"}</p>
                     </div>
-                    <div className="px-3 py-1 rounded-full" style={{ background: `${categoryColors[category]}22`, color: categoryColors[category], fontWeight: 700, fontSize: "12px" }}>
-                      {categoryColors[category] ? category : ""}
-                    </div>
+                  <div className="px-3 py-1 rounded-full" style={{ background: `${categoryColors[category] || "#6366f1"}22`, color: categoryColors[category] || "#6366f1", fontWeight: 700, fontSize: "12px" }}>
+                    {category}
+                  </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {categoryPlatforms[category]?.length ? (
@@ -748,6 +842,44 @@ export function SettingsPage({
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {section === "teams" && (
+          <div className="flex flex-col gap-6 max-w-3xl">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Teams</h1>
+                <p style={{ fontSize: "14px", color: "#64748b" }}>View and manage the teams used in subscriptions</p>
+              </div>
+              <button
+                onClick={() => setShowCreateTeam(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white"
+                style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.3)" }}
+              >
+                <Plus size={15} />
+                Add Team
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {teams.map((team) => {
+                const identity = getTeamIdentity(team);
+                return (
+                  <div key={team} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{team}</p>
+                        <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>Available for subscription assignments</p>
+                      </div>
+                      <span className="px-3 py-1 rounded-full" style={{ background: identity.light, color: identity.color, fontWeight: 700, fontSize: "12px" }}>
+                        Team
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -838,7 +970,7 @@ export function SettingsPage({
                           <p style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{notif.email}</p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span style={{ fontSize: "12px", color: "#94a3b8" }}>{notif.platform}</span>
-                            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>•</span>
+                            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>â€¢</span>
                             <span style={{ fontSize: "12px", color: "#94a3b8" }}>{notif.reminder}</span>
                           </div>
                         </div>
@@ -1031,14 +1163,14 @@ export function SettingsPage({
 
       {showCreateUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
               <h2 style={{ color: "#0f172a" }}>Create New User</h2>
               <button onClick={() => setShowCreateUser(false)} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9", color: "#64748b" }}>
                 <X size={16} />
               </button>
             </div>
-            <div className="px-6 py-5 flex flex-col gap-4">
+            <div className="px-6 py-5 flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(90vh - 82px)" }}>
               {[
                 { label: "Full Name *", key: "name" as const, placeholder: "e.g. Jamie Rivera" },
                 { label: "Email Address *", key: "email" as const, placeholder: "e.g. jamie@example.com" },
@@ -1092,7 +1224,7 @@ export function SettingsPage({
 
       {showAddNotif && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
               <div>
                 <h2 style={{ color: "#0f172a" }}>Add Notification</h2>
@@ -1102,7 +1234,7 @@ export function SettingsPage({
                 <X size={16} />
               </button>
             </div>
-            <div className="px-6 py-5 flex flex-col gap-4">
+            <div className="px-6 py-5 flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(90vh - 82px)" }}>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Email Address *</label>
                 <input
@@ -1124,7 +1256,7 @@ export function SettingsPage({
                   className="w-full px-3 py-2.5 rounded-xl outline-none"
                   style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: notifForm.platform ? "#0f172a" : "#94a3b8" }}
                 >
-                  <option value="">Select platform�</option>
+                  <option value="">Select platformï¿½</option>
                   {platformOptions.map((pl) => <option key={pl} value={pl}>{pl}</option>)}
                 </select>
               </div>
@@ -1150,6 +1282,120 @@ export function SettingsPage({
                 </button>
                 <button onClick={handleAddNotif} className="flex-1 py-2.5 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}>
                   Add Notification
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showCreateCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
+              <div>
+                <h2 style={{ color: "#0f172a" }}>Create Category</h2>
+                <p style={{ fontSize: "13px", color: "#94a3b8" }}>Add a new category for subscriptions</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCreateCategory(false);
+                  setNewCategoryName("");
+                }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "#f1f5f9", color: "#64748b" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-5 flex flex-col gap-4">
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
+                  Enter New Category
+                </label>
+                <input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="e.g. Marketing Tools"
+                  className="w-full px-3 py-2.5 rounded-xl outline-none"
+                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCreateCategory(false);
+                    setNewCategoryName("");
+                  }}
+                  className="flex-1 py-2.5 rounded-xl"
+                  style={{ border: "1.5px solid #e2e8f0", fontSize: "14px", color: "#64748b", background: "white" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  className="flex-1 py-2.5 rounded-xl text-white"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showCreateTeam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
+              <div>
+                <h2 style={{ color: "#0f172a" }}>Add Team</h2>
+                <p style={{ fontSize: "13px", color: "#94a3b8" }}>Create a new team for subscriptions</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCreateTeam(false);
+                  setNewTeamName("");
+                }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "#f1f5f9", color: "#64748b" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-5 flex flex-col gap-4">
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
+                  Enter Team
+                </label>
+                <input
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  placeholder="e.g. Finance"
+                  className="w-full px-3 py-2.5 rounded-xl outline-none"
+                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCreateTeam(false);
+                    setNewTeamName("");
+                  }}
+                  className="flex-1 py-2.5 rounded-xl"
+                  style={{ border: "1.5px solid #e2e8f0", fontSize: "14px", color: "#64748b", background: "white" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateTeam}
+                  className="flex-1 py-2.5 rounded-xl text-white"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}
+                >
+                  Save
                 </button>
               </div>
             </div>

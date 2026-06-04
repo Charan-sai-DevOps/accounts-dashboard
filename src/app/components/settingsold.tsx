@@ -2,18 +2,20 @@ import { useState } from "react";
 import {
   Users, Bell, DollarSign, Shield,
   Plus, Trash2, X, Check, UserCheck,
-  Clock, Mail, Smartphone, ChevronRight,
+  Clock, Mail, Smartphone, ChevronRight, Tags,
   Search, Edit2, AlertTriangle,
 } from "lucide-react";
-import { Subscription } from "../data/subscriptions";
+import { Subscription, Category } from "../data/subscriptions";
 
-type SettingsSection = "users" | "notifications" | "currency" | "2fa";
+type SettingsSection = "users" | "notifications" | "categories" | "currency" | "2fa";
 
 interface SettingsPageProps {
   subscriptions: Subscription[];
+  categories: Category[];
+  onCreateCategory: (category: string) => void;
 }
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface AppUser {
   id: string;
@@ -31,7 +33,7 @@ interface CustomNotification {
   reminder: string;
 }
 
-// ─── Initial data ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Initial data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const initialUsers: AppUser[] = [
   { id: "1", name: "Charan Sai", email: "Charan@webomindapps.com", role: "Admin", lastLogin: "2026-06-01 09:14", avatar: "C" },
@@ -55,16 +57,17 @@ const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
   Viewer: { bg: "rgba(148,163,184,0.12)", color: "#64748b" },
 };
 
-// ─── Submenu nav items ────────────────────────────────────────────────────────
+// â”€â”€â”€ Submenu nav items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const settingsNav: { id: SettingsSection; label: string; icon: React.ReactNode; desc: string }[] = [
   { id: "users", label: "User Management", icon: <Users size={17} />, desc: "Manage team members & roles" },
   { id: "notifications", label: "Notifications", icon: <Bell size={17} />, desc: "Renewal alerts & reminders" },
+  { id: "categories", label: "Categories", icon: <Tags size={17} />, desc: "Add and manage spend categories" },
   { id: "currency", label: "Currency Display", icon: <DollarSign size={17} />, desc: "Set your preferred currency" },
   { id: "2fa", label: "Two-Factor Auth", icon: <Shield size={17} />, desc: "Secure your account" },
 ];
 
-// ─── Shared toggle component ──────────────────────────────────────────────────
+// â”€â”€â”€ Shared toggle component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -91,19 +94,19 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export function SettingsPage({ subscriptions }: SettingsPageProps) {
+export function SettingsPage({ subscriptions, categories, onCreateCategory }: SettingsPageProps) {
   const [section, setSection] = useState<SettingsSection>("users");
 
-  // ── User Management state ──
+  // â”€â”€ User Management state â”€â”€
   const [users, setUsers] = useState<AppUser[]>(initialUsers);
   const [userSearch, setUserSearch] = useState("");
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"] });
 
-  // ── Notification state ──
+  // â”€â”€ Notification state â”€â”€
   const [builtInNotifs, setBuiltInNotifs] = useState({
     sevenDay: true,
     threeDayBefore: true,
@@ -114,20 +117,22 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
   const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([]);
   const [showAddNotif, setShowAddNotif] = useState(false);
   const [notifForm, setNotifForm] = useState({ email: "", platform: "", reminder: REMINDER_OPTIONS[0] });
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
-  // ── Currency state ──
+  // â”€â”€ Currency state â”€â”€
   const [primaryCurrency, setPrimaryCurrency] = useState<"INR" | "USD">("INR");
   const [additionalCurrency, setAdditionalCurrency] = useState<"USD" | "INR" | "EUR" | "None">("USD");
   const [exchangeRates] = useState({ INR: 83.5, USD: 1, EUR: 0.92 });
 
-  // ── 2FA state ──
+  // â”€â”€ 2FA state â”€â”€
   const [emailAuth, setEmailAuth] = useState(false);
   const [googleAuth, setGoogleAuth] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifySuccess, setVerifySuccess] = useState(false);
 
-  // ── Handlers ──
+  // â”€â”€ Handlers â”€â”€
 
   const handleCreateUser = () => {
     if (!newUser.name || !newUser.email) return;
@@ -161,6 +166,14 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
     setShowAddNotif(false);
   };
 
+  const handleCreateCategory = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    onCreateCategory(trimmed);
+    setNewCategoryName("");
+    setShowCreateCategory(false);
+  };
+
   const handleDeleteNotif = (id: string) => {
     setCustomNotifs((prev) => prev.filter((n) => n.id !== id));
   };
@@ -179,8 +192,8 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
 
   const platformOptions = Array.from(new Set(subscriptions.map((s) => s.platform)));
 
-  // ── Currency helper ──
-  const currencySymbol = (c: string) => c === "INR" ? "₹" : c === "USD" ? "$" : c === "EUR" ? "€" : "";
+  // â”€â”€ Currency helper â”€â”€
+  const currencySymbol = (c: string) => c === "INR" ? "â‚¹" : c === "USD" ? "$" : c === "EUR" ? "â‚¬" : "";
   const currencyLabel = (c: string) => `${currencySymbol(c)} ${c}`;
 
   return (
@@ -220,7 +233,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
       {/* Section content */}
       <div className="flex-1 p-8 overflow-y-auto">
 
-        {/* ── USER MANAGEMENT ── */}
+        {/* â”€â”€ USER MANAGEMENT â”€â”€ */}
         {section === "users" && (
           <div className="flex flex-col gap-6 max-w-4xl">
             {/* Header */}
@@ -366,7 +379,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
           </div>
         )}
 
-        {/* ── NOTIFICATIONS ── */}
+        {/* â”€â”€ NOTIFICATIONS â”€â”€ */}
         {section === "notifications" && (
           <div className="flex flex-col gap-6 max-w-2xl">
             <div className="flex items-center justify-between">
@@ -428,7 +441,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                           <p style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{notif.email}</p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span style={{ fontSize: "12px", color: "#94a3b8" }}>{notif.platform}</span>
-                            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>·</span>
+                            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Â·</span>
                             <span style={{ fontSize: "12px", color: "#94a3b8" }}>{notif.reminder}</span>
                           </div>
                         </div>
@@ -444,7 +457,41 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
           </div>
         )}
 
-        {/* ── CURRENCY DISPLAY ── */}
+        {/* â”€â”€ CURRENCY DISPLAY â”€â”€ */}
+        {/* â”€â”€ CATEGORIES â”€â”€ */}
+        {section === "categories" && (
+          <div className="flex flex-col gap-6 max-w-3xl">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Categories</h1>
+                <p style={{ fontSize: "14px", color: "#64748b" }}>Manage the category options used across subscriptions</p>
+              </div>
+              <button
+                onClick={() => setShowCreateCategory(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white"
+                style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.3)" }}
+              >
+                <Plus size={15} />
+                Create Category
+              </button>
+            </div>
+
+            <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
+              <div className="flex flex-wrap gap-3">
+                {categories.map((category) => (
+                  <span
+                    key={category}
+                    className="px-3 py-1.5 rounded-full"
+                    style={{ background: "#f8fafc", border: "1px solid #e2e8f0", color: "#334155", fontSize: "12px", fontWeight: 600 }}
+                  >
+                    {category}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {section === "currency" && (
           <div className="flex flex-col gap-6 max-w-xl">
             <div>
@@ -458,8 +505,8 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>All amounts will be displayed in this currency</p>
               <div className="grid grid-cols-2 gap-3">
                 {([
-                  { code: "INR", name: "Indian Rupee", symbol: "₹", flag: "🇮🇳" },
-                  { code: "USD", name: "US Dollar", symbol: "$", flag: "🇺🇸" },
+                  { code: "INR", name: "Indian Rupee", symbol: "â‚¹", flag: "ðŸ‡®ðŸ‡³" },
+                  { code: "USD", name: "US Dollar", symbol: "$", flag: "ðŸ‡ºðŸ‡¸" },
                 ] as const).map((c) => (
                   <button
                     key={c.code}
@@ -491,10 +538,10 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
               <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Show a secondary currency alongside the primary</p>
               <div className="grid grid-cols-2 gap-3">
                 {([
-                  { code: "USD", name: "US Dollar", symbol: "$", flag: "🇺🇸" },
-                  { code: "EUR", name: "Euro", symbol: "€", flag: "🇪🇺" },
-                  { code: "INR", name: "Indian Rupee", symbol: "₹", flag: "🇮🇳" },
-                  { code: "None", name: "No additional", symbol: "—", flag: "🚫" },
+                  { code: "USD", name: "US Dollar", symbol: "$", flag: "ðŸ‡ºðŸ‡¸" },
+                  { code: "EUR", name: "Euro", symbol: "â‚¬", flag: "ðŸ‡ªðŸ‡º" },
+                  { code: "INR", name: "Indian Rupee", symbol: "â‚¹", flag: "ðŸ‡®ðŸ‡³" },
+                  { code: "None", name: "No additional", symbol: "â€”", flag: "ðŸš«" },
                 ] as const).map((c) => (
                   <button
                     key={c.code}
@@ -538,7 +585,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                       {primaryCurrency === "INR" && additionalCurrency === "USD" ? (100 / exchangeRates.INR).toFixed(2) :
                         primaryCurrency === "USD" && additionalCurrency === "INR" ? (100 * exchangeRates.INR).toFixed(2) :
                           primaryCurrency === "USD" && additionalCurrency === "EUR" ? (100 * exchangeRates.EUR).toFixed(2) :
-                            "—"}
+                            "â€”"}
                     </p>
                     <p style={{ fontSize: "12px", color: "#64748b" }}>{additionalCurrency}</p>
                   </div>
@@ -548,7 +595,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
           </div>
         )}
 
-        {/* ── TWO-FACTOR AUTH ── */}
+        {/* â”€â”€ TWO-FACTOR AUTH â”€â”€ */}
         {section === "2fa" && (
           <div className="flex flex-col gap-6 max-w-xl">
             <div>
@@ -580,7 +627,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                     {emailAuth && (
                       <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg self-start" style={{ background: "rgba(16,185,129,0.1)", display: "inline-flex" }}>
                         <Check size={12} style={{ color: "#10b981" }} />
-                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled — Charan@webomindapps.com</span>
+                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled â€” Charan@webomindapps.com</span>
                       </div>
                     )}
                   </div>
@@ -683,17 +730,17 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
         )}
       </div>
 
-      {/* ── Create User Modal ── */}
+      {/* â”€â”€ Create User Modal â”€â”€ */}
       {showCreateUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
               <h2 style={{ color: "#0f172a" }}>Create New User</h2>
               <button onClick={() => setShowCreateUser(false)} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9", color: "#64748b" }}>
                 <X size={16} />
               </button>
             </div>
-            <div className="px-6 py-5 flex flex-col gap-4">
+            <div className="px-6 py-5 flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(90vh - 82px)" }}>
               {[
                 { label: "Full Name *", key: "name" as const, placeholder: "e.g. Jamie Rivera" },
                 { label: "Email Address *", key: "email" as const, placeholder: "e.g. jamie@example.com" },
@@ -744,10 +791,10 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
         </div>
       )}
 
-      {/* ── Add Notification Modal ── */}
+      {/* â”€â”€ Add Notification Modal â”€â”€ */}
       {showAddNotif && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
               <div>
                 <h2 style={{ color: "#0f172a" }}>Add Notification</h2>
@@ -757,7 +804,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                 <X size={16} />
               </button>
             </div>
-            <div className="px-6 py-5 flex flex-col gap-4">
+            <div className="px-6 py-5 flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(90vh - 82px)" }}>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Email Address *</label>
                 <input
@@ -779,7 +826,7 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                   className="w-full px-3 py-2.5 rounded-xl outline-none"
                   style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: notifForm.platform ? "#0f172a" : "#94a3b8" }}
                 >
-                  <option value="">Select platform…</option>
+                  <option value="">Select platformâ€¦</option>
                   {platformOptions.map((pl) => <option key={pl} value={pl}>{pl}</option>)}
                 </select>
               </div>
@@ -805,6 +852,64 @@ export function SettingsPage({ subscriptions }: SettingsPageProps) {
                 </button>
                 <button onClick={handleAddNotif} className="flex-1 py-2.5 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}>
                   Add Notification
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
+              <div>
+                <h2 style={{ color: "#0f172a" }}>Create Category</h2>
+                <p style={{ fontSize: "13px", color: "#94a3b8" }}>Add a new category for subscriptions</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCreateCategory(false);
+                  setNewCategoryName("");
+                }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "#f1f5f9", color: "#64748b" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-5 flex flex-col gap-4">
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
+                  Enter New Category
+                </label>
+                <input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="e.g. Marketing Tools"
+                  className="w-full px-3 py-2.5 rounded-xl outline-none"
+                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCreateCategory(false);
+                    setNewCategoryName("");
+                  }}
+                  className="flex-1 py-2.5 rounded-xl"
+                  style={{ border: "1.5px solid #e2e8f0", fontSize: "14px", color: "#64748b", background: "white" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  className="flex-1 py-2.5 rounded-xl text-white"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}
+                >
+                  Save
                 </button>
               </div>
             </div>

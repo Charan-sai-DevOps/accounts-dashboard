@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Search, Edit2, Trash2, Download, Filter, Eye, EyeOff, Copy, Check, AlertTriangle } from "lucide-react";
-import { Subscription, getDaysUntilExpiry, getMonthlyCost, getClearbitLogoUrl, USD_TO_INR, teamColors, TEAM_ORDER, Team } from "../data/subscriptions";
+import { Subscription, getDaysUntilExpiry, getMonthlyCost, getClearbitLogoUrl, USD_TO_INR, teamColors, Team, Category, getTeamIdentity } from "../data/subscriptions";
 import { AddEditModal } from "./AddEditModal";
 
 interface SubscriptionsProps {
@@ -8,9 +8,11 @@ interface SubscriptionsProps {
   onAdd: (sub: Omit<Subscription, "id">) => void;
   onEdit: (id: string, sub: Omit<Subscription, "id">) => void;
   onDelete: (id: string) => void;
+  categories: Category[];
+  teams: Team[];
 }
 
-export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: SubscriptionsProps) {
+export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categories, teams }: SubscriptionsProps) {
   const [search, setSearch] = useState("");
   const [filterCycle, setFilterCycle] = useState("All");
   const [purchaseFrom, setPurchaseFrom] = useState("");
@@ -49,6 +51,17 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
 
     return matchSearch && matchCycle && fromOk && toOk;
   });
+
+  const activeSubscriptions = subscriptions.filter((subscription) => subscription.active && subscription.renewalStatus !== "Cancelled");
+  const orderedTeams = Array.from(
+    new Set([
+      ...teams,
+      ...filtered.map((subscription) => subscription.team).filter(Boolean),
+    ])
+  );
+  const uniquePlatformCount = new Set(
+    activeSubscriptions.map((subscription) => subscription.platform.trim().toLowerCase()).filter(Boolean)
+  ).size;
 
   const handleSave = (sub: Omit<Subscription, "id">) => {
     if (editTarget) {
@@ -137,7 +150,9 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Subscriptions</h1>
-          <p style={{ color: "#64748b", fontSize: "14px" }}>{subscriptions.length} active subscriptions</p>
+          <p style={{ color: "#64748b", fontSize: "14px" }}>
+            {activeSubscriptions.length} active subscriptions across {uniquePlatformCount} platforms
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -249,24 +264,44 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
                 </td>
               </tr>
             ) : (
-              TEAM_ORDER.flatMap((team: Team) => {
+              orderedTeams.flatMap((team: Team) => {
                 const teamSubs = filtered.filter((s) => s.team === team);
                 if (teamSubs.length === 0) return [];
-                const tc = teamColors[team];
+                const tc = teamColors[team] || getTeamIdentity(team);
+                const teamINRTotal = teamSubs
+                  .filter((sub) => sub.currency === "INR")
+                  .reduce((sum, sub) => sum + sub.cost, 0);
+                const teamUSDTotal = teamSubs
+                  .filter((sub) => sub.currency === "USD")
+                  .reduce((sum, sub) => sum + sub.cost, 0);
                 return [
                   // Team header row
                   <tr key={`header-${team}`} style={{ background: tc.bg, borderTop: "2px solid #e2e8f0" }}>
                     <td colSpan={10} style={{ padding: "9px 16px" }}>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="px-2.5 py-0.5 rounded-full"
-                          style={{ fontSize: "11px", fontWeight: 700, background: tc.light, color: tc.color }}
-                        >
-                          {team}
-                        </span>
-                        <span style={{ fontSize: "11px", color: "#94a3b8" }}>
-                          {teamSubs.length} subscription{teamSubs.length !== 1 ? "s" : ""}
-                        </span>
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="px-2.5 py-0.5 rounded-full"
+                            style={{ fontSize: "11px", fontWeight: 700, background: tc.light, color: tc.color }}
+                          >
+                            {team}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                            {teamSubs.length} subscription{teamSubs.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          {teamINRTotal > 0 && (
+                            <span className="px-2.5 py-0.5 rounded-full" style={{ fontSize: "11px", fontWeight: 700, background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+                              ₹{teamINRTotal.toFixed(0)}
+                            </span>
+                          )}
+                          {teamUSDTotal > 0 && (
+                            <span className="px-2.5 py-0.5 rounded-full" style={{ fontSize: "11px", fontWeight: 700, background: "rgba(99,102,241,0.12)", color: "#6366f1" }}>
+                              ${teamUSDTotal.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>,
@@ -455,8 +490,8 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
                       <span
                         className="px-2.5 py-0.5 rounded-full text-xs font-bold"
                         style={{
-                          background: teamColors[detailTarget.team]?.light,
-                          color: teamColors[detailTarget.team]?.color,
+                          background: getTeamIdentity(detailTarget.team).light,
+                          color: getTeamIdentity(detailTarget.team).color,
                         }}
                       >
                         {detailTarget.team}
@@ -554,10 +589,12 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete }: Subscr
       )}
 
       {modalOpen && (
-        <AddEditModal
+          <AddEditModal
           subscription={editTarget}
           onSave={handleSave}
           onClose={() => { setModalOpen(false); setEditTarget(null); }}
+          categories={categories}
+          teams={teams}
         />
       )}
 

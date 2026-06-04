@@ -1,25 +1,20 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { Subscription, BillingCycle, PaymentMode, Category, Currency, Team, TEAM_ORDER } from "../data/subscriptions";
+import { Subscription, BillingCycle, PaymentMode, Category, Currency, Team, getPlatformIdentity } from "../data/subscriptions";
 
 interface AddEditModalProps {
   subscription?: Subscription | null;
   onSave: (sub: Omit<Subscription, "id">) => void;
   onClose: () => void;
+  categories: Category[];
+  teams: Team[];
 }
 
 const CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
 const PAYMENT_MODES: PaymentMode[] = ["Card", "UPI"];
-const CATEGORIES: Category[] = ["Entertainment", "Productivity", "Dev Tools", "Cloud", "Design", "AI", "Communication", "Storage"];
 const CURRENCIES: Currency[] = ["INR", "USD"];
 
-const PLATFORM_COLORS: Record<string, string> = {
-  Netflix: "#E50914", Spotify: "#1DB954", Adobe: "#FF0000", GitHub: "#24292E",
-  AWS: "#FF9900", Slack: "#4A154B", Zoom: "#2D8CFF", Figma: "#F24E1E",
-  Notion: "#000000", Linear: "#5E6AD2", ChatGPT: "#10A37F", Dropbox: "#0061FF",
-};
-
-export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProps) {
+export function AddEditModal({ subscription, onSave, onClose, categories, teams }: AddEditModalProps) {
   const [form, setForm] = useState({
     platform: "",
     plan: "",
@@ -69,9 +64,8 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
   }, [subscription]);
 
   const handlePlatformChange = (val: string) => {
-    const color = Object.entries(PLATFORM_COLORS).find(([k]) => val.toLowerCase().includes(k.toLowerCase()))?.[1] || "#6366f1";
-    const logo = val.slice(0, 2).toUpperCase();
-    setForm((f) => ({ ...f, platform: val, color, logo }));
+    const identity = getPlatformIdentity(val);
+    setForm((f) => ({ ...f, platform: val, color: identity.color, logo: identity.logo }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -80,7 +74,7 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
     onSave({
       ...form,
       cost: parseFloat(form.cost),
-      logo: form.logo || form.platform.slice(0, 2).toUpperCase(),
+      logo: form.logo || getPlatformIdentity(form.platform).logo,
     });
   };
 
@@ -221,7 +215,7 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
                 className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                 style={fieldStyle}
               >
-                {TEAM_ORDER.map((t) => <option key={t}>{t}</option>)}
+                {teams.map((t) => <option key={t}>{t}</option>)}
               </select>
             </div>
             <div>
@@ -246,7 +240,7 @@ export function AddEditModal({ subscription, onSave, onClose }: AddEditModalProp
               className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
               style={fieldStyle}
             >
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+              {categories.map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
 

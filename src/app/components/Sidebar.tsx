@@ -8,6 +8,9 @@ import {
   ChevronRight,
   Zap,
   LogOut,
+  User,
+  BellRing,
+  ShieldCheck,
 } from "lucide-react";
 
 type Page =
@@ -21,6 +24,9 @@ interface SidebarProps {
   activePage: Page;
   onNavigate: (page: Page) => void;
   onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
+  onNavigateToNotifications?: () => void;
+  onLogout?: () => void;
   profile?: {
     username: string;
     email: string;
@@ -63,12 +69,16 @@ export function Sidebar({
   activePage,
   onNavigate,
   onNavigateToProfile,
+  onNavigateToSettings,
+  onNavigateToNotifications,
+  onLogout,
   profile,
 }: SidebarProps) {
-  const [showLogout, setShowLogout] = useState(false);
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const username = profile?.username || "Charan Sai";
-  const email = profile?.email || "Charan@webomindapps.com";
+  const email = profile?.email || "charan.sai@webomindapps.com";
   const initialLetter = username ? username[0].toUpperCase() : "C";
 
   return (
@@ -177,26 +187,121 @@ export function Sidebar({
       {/* Footer */}
       <div 
         className="px-5 py-5 border-t border-white/10 relative"
-        onMouseEnter={() => setShowLogout(true)}
-        onMouseLeave={() => setShowLogout(false)}
+        onMouseEnter={() => setShowQuickMenu(true)}
+        onMouseLeave={() => setShowQuickMenu(false)}
       >
-        {showLogout && (
+        {showQuickMenu && (
           <div
-            className="absolute bottom-16 left-5 px-4 py-2.5 rounded-xl border backdrop-blur-md transition-all duration-200"
+            className="absolute bottom-16 left-5 w-64 rounded-3xl border backdrop-blur-md transition-all duration-200 overflow-hidden"
             style={{
-              background: "rgba(15, 23, 42, 0.95)",
+              background: "rgba(17, 24, 39, 0.97)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
               boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.3)",
               zIndex: 50,
             }}
           >
-            <button
-              onClick={() => alert("Logged out successfully!")}
-              className="flex items-center gap-2 text-rose-400 hover:text-rose-300 transition-colors text-xs font-semibold"
-            >
-              <LogOut size={13} />
-              Logout
-            </button>
+            <div className="px-4 py-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white"
+                  style={{
+                    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {initialLetter}
+                </div>
+                <div>
+                  <p className="text-white text-sm font-semibold">{username}</p>
+                  <p style={{ color: "#94a3b8", fontSize: "11px" }}>{email}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-2 py-2">
+              <button
+                onClick={() => {
+                  onNavigateToProfile?.();
+                  setShowQuickMenu(false);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
+                style={{ color: "#e2e8f0" }}
+              >
+                <User size={16} className="text-slate-300 group-hover:text-white" />
+                <span className="text-sm font-medium">Profile</span>
+              </button>
+              <button
+                onClick={() => {
+                  onNavigateToSettings?.();
+                  onNavigate("settings");
+                  setShowQuickMenu(false);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
+                style={{ color: "#e2e8f0" }}
+              >
+                <Settings size={16} className="text-slate-300 group-hover:text-white" />
+                <span className="text-sm font-medium">Settings</span>
+              </button>
+              <button
+                onClick={() => {
+                  onNavigateToNotifications?.();
+                  onNavigate("settings");
+                  setShowQuickMenu(false);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
+                style={{ color: "#e2e8f0" }}
+              >
+                <BellRing size={16} className="text-slate-300 group-hover:text-white" />
+                <span className="text-sm font-medium">Notifications</span>
+              </button>
+              <div className="my-2 h-px bg-white/10" />
+              <button
+                onClick={() => {
+                  setShowLogoutConfirm(true);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-rose-500/10"
+                style={{ color: "#fda4af" }}
+              >
+                <LogOut size={16} className="text-rose-300 group-hover:text-rose-200" />
+                <span className="text-sm font-medium">Logout</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}>
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <h3 className="text-white text-lg font-semibold">Log out</h3>
+                  <p style={{ color: "#94a3b8", fontSize: "13px" }}>Do you want to log out?</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0" }}
+                >
+                  No
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    onLogout?.();
+                  }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                  style={{ background: "linear-gradient(135deg, #ef4444, #f97316)" }}
+                >
+                  Yes
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

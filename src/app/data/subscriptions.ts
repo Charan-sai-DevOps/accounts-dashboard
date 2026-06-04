@@ -1,8 +1,8 @@
 export type BillingCycle = "Monthly" | "Annual" | "Quarterly";
 export type PaymentMode = "Card" | "UPI";
-export type Category = "Entertainment" | "Productivity" | "Dev Tools" | "Cloud" | "Design" | "AI" | "Communication" | "Storage";
+export type Category = string;
 export type Currency = "USD" | "INR";
-export type Team = "Development" | "Graphic Design" | "Social Media";
+export type Team = string;
 
 export interface Subscription {
   id: string;
@@ -28,7 +28,22 @@ export interface Subscription {
   active: boolean;
 }
 
+type RawSubscription = Partial<Subscription> & { id?: unknown };
+
 export const USD_TO_INR = 84;
+
+export const DEFAULT_CATEGORIES: Category[] = [
+  "Entertainment",
+  "Productivity",
+  "Dev Tools",
+  "Cloud",
+  "Design",
+  "AI",
+  "Communication",
+  "Storage",
+];
+
+export const DEFAULT_TEAMS: Team[] = ["Development", "Graphic Design", "Social Media"];
 
 /**
  * Platform name to domain mapping for Clearbit logo API
@@ -67,6 +82,168 @@ platformDomainMap["Claude"] = "claude.ai";
 platformDomainMap["Prime Video"] = "primevideo.com";
 platformDomainMap["PrimeVideo"] = "primevideo.com";
 platformDomainMap["Claude AI"] = "claude.ai";
+
+const platformPresetMap: Record<string, { color: string; logo: string }> = {
+  netflix: { color: "#E50914", logo: "N" },
+  spotify: { color: "#1DB954", logo: "S" },
+  adobe: { color: "#FF0000", logo: "Ai" },
+  github: { color: "#24292E", logo: "GH" },
+  aws: { color: "#FF9900", logo: "AWS" },
+  slack: { color: "#4A154B", logo: "Sl" },
+  zoom: { color: "#2D8CFF", logo: "Z" },
+  linear: { color: "#5E6AD2", logo: "Li" },
+  figma: { color: "#F24E1E", logo: "Fig" },
+  chatgpt: { color: "#10A37F", logo: "AI" },
+  youtube: { color: "#FF0000", logo: "YT" },
+  notion: { color: "#000000", logo: "No" },
+  "1password": { color: "#1A8CFF", logo: "1P" },
+  dropbox: { color: "#0061FF", logo: "DB" },
+  gmail: { color: "#4285F4", logo: "Gm" },
+  drive: { color: "#0F9D58", logo: "Dr" },
+  jira: { color: "#0052CC", logo: "Ji" },
+  asana: { color: "#F06A6A", logo: "As" },
+  monday: { color: "#FF5A5F", logo: "Mo" },
+  canva: { color: "#00C4CC", logo: "Ca" },
+  trello: { color: "#0052CC", logo: "Tr" },
+  discord: { color: "#5865F2", logo: "Di" },
+  teams: { color: "#6264A7", logo: "Te" },
+  airtable: { color: "#18BFFF", logo: "At" },
+  loom: { color: "#625DF5", logo: "Lo" },
+  claude: { color: "#F97316", logo: "Cl" },
+  primevideo: { color: "#00A8E1", logo: "PV" },
+};
+
+function normalizePlatformName(platform: string): string {
+  return platform.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function hashToColor(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 48%)`;
+}
+
+export function getPlatformIdentity(platform: string): { color: string; logo: string } {
+  const normalized = normalizePlatformName(platform);
+  const presetKey = Object.keys(platformPresetMap).find((key) => normalized.includes(key));
+  if (presetKey) return platformPresetMap[presetKey];
+
+  const fallbackLogo = platform
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 2) || "PL";
+
+  return {
+    color: hashToColor(normalized || platform),
+    logo: fallbackLogo,
+  };
+}
+
+function isValidDate(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(new Date(value).getTime());
+}
+
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+export function sanitizeSubscription(raw: RawSubscription): Subscription | null {
+  const platform = normalizeString(raw.platform);
+  const cost = normalizeNumber(raw.cost);
+  const purchaseDate = isValidDate(raw.purchaseDate) ? raw.purchaseDate : "";
+  const expiryDate = isValidDate(raw.expiryDate) ? raw.expiryDate : "";
+
+  if (!platform || cost === null || !purchaseDate || !expiryDate) {
+    return null;
+  }
+
+  const identity = getPlatformIdentity(platform);
+  const cycle = raw.cycle === "Monthly" || raw.cycle === "Annual" || raw.cycle === "Quarterly" ? raw.cycle : "Monthly";
+  const currency = raw.currency === "INR" || raw.currency === "USD" ? raw.currency : "USD";
+  const paymentMode = raw.paymentMode === "UPI" || raw.paymentMode === "Card" ? raw.paymentMode : "Card";
+  const renewalStatus =
+    raw.renewalStatus === "Paid" || raw.renewalStatus === "Failed" || raw.renewalStatus === "Cancelled"
+      ? raw.renewalStatus
+      : undefined;
+
+  return {
+    id: typeof raw.id === "string" && raw.id.trim() ? raw.id : `${platform}-${purchaseDate}-${expiryDate}`,
+    platform,
+    plan: normalizeString(raw.plan) || "Plan not set",
+    cost,
+    currency,
+    purchaseDate,
+    expiryDate,
+    cycle,
+    paymentMode,
+    buyer: normalizeString(raw.buyer) || "Unassigned",
+    accountHolder: normalizeString(raw.accountHolder),
+    accountEmail: normalizeString(raw.accountEmail),
+    accountPassword: normalizeString(raw.accountPassword),
+    invoiceFileName: normalizeString(raw.invoiceFileName) || undefined,
+    renewalStatus,
+    category: normalizeString(raw.category) || "Uncategorized",
+    team: normalizeString(raw.team) || "Unassigned",
+    autoPay: normalizeBoolean(raw.autoPay),
+    color: normalizeString(raw.color) || identity.color,
+    logo: normalizeString(raw.logo) || identity.logo,
+    active: normalizeBoolean(raw.active, true),
+  };
+}
+
+export function sanitizeSubscriptions(items: unknown): Subscription[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => sanitizeSubscription((item ?? {}) as RawSubscription))
+    .filter((item): item is Subscription => item !== null);
+}
+
+export function getTeamIdentity(team: string): { bg: string; color: string; light: string } {
+  const normalized = normalizePlatformName(team);
+  const preset = teamColors[team as Team];
+  if (preset) return preset;
+
+  let hash = 0;
+  for (let i = 0; i < (normalized || team).length; i += 1) {
+    hash = ((hash << 5) - hash) + (normalized || team).charCodeAt(i);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return {
+    bg: `hsl(${hue}, 70%, 48% / 0.08)`,
+    color: `hsl(${hue}, 70%, 48%)`,
+    light: `hsl(${hue}, 70%, 48% / 0.15)`,
+  };
+}
 
 export function getClearbitLogoUrl(platform: string): string {
   if (!platform) return "";
@@ -380,7 +557,7 @@ export const initialSubscriptions: Subscription[] = [
   },
 ];
 
-export const categoryColors: Record<Category, string> = {
+export const categoryColors: Record<string, string> = {
   Entertainment: "#E50914",
   Productivity: "#6366F1",
   "Dev Tools": "#24292E",
@@ -397,7 +574,7 @@ export const teamColors: Record<Team, { bg: string; color: string; light: string
   "Social Media": { bg: "rgba(245,158,11,0.08)", color: "#f59e0b", light: "rgba(245,158,11,0.15)" },
 };
 
-export const TEAM_ORDER: Team[] = ["Development", "Graphic Design", "Social Media"];
+export const TEAM_ORDER: Team[] = DEFAULT_TEAMS;
 
 export function getMonthlyCost(sub: Subscription): number {
   if (sub.cycle === "Monthly") return sub.cost;
@@ -423,10 +600,32 @@ export function getINRAnnualCost(sub: Subscription): number {
   return sub.currency === "USD" ? annual * USD_TO_INR : annual;
 }
 
+export function getUSDMonthlyCost(sub: Subscription): number {
+  const monthly = getMonthlyCost(sub);
+  return sub.currency === "INR" ? monthly / USD_TO_INR : monthly;
+}
+
+export function getUSDAnnualCost(sub: Subscription): number {
+  const annual = getAnnualCost(sub);
+  return sub.currency === "INR" ? annual / USD_TO_INR : annual;
+}
+
 export function getDaysUntilExpiry(expiryDate: string): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const expiry = new Date(expiryDate);
   expiry.setHours(0, 0, 0, 0);
   return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export function getNextExpiryDate(subscription: Subscription, baseDate = subscription.expiryDate): string {
+  const nextDate = new Date(baseDate);
+  if (subscription.cycle === "Monthly") {
+    nextDate.setMonth(nextDate.getMonth() + 1);
+  } else if (subscription.cycle === "Quarterly") {
+    nextDate.setMonth(nextDate.getMonth() + 3);
+  } else if (subscription.cycle === "Annual") {
+    nextDate.setFullYear(nextDate.getFullYear() + 1);
+  }
+  return nextDate.toISOString().split("T")[0];
 }
