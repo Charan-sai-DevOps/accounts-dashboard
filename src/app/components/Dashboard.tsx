@@ -12,9 +12,9 @@ import {
   getINRAnnualCost,
   getDaysUntilExpiry,
   categoryColors,
-  getClearbitLogoUrl,
   USD_TO_INR,
 } from "../data/subscriptions";
+import { usePlatformLogo } from "../hooks/usePlatformLogo";
 
 interface DashboardProps {
   subscriptions: Subscription[];
@@ -43,16 +43,12 @@ function formatOriginalAmount(subscription: Subscription) {
 }
 
 export function Dashboard({ subscriptions, loading = false, onNavigate }: DashboardProps) {
-  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
+  const { getActiveLogoSrc, handleLogoError } = usePlatformLogo();
 
   const activeSubscriptions = useMemo(
     () => subscriptions.filter((sub) => sub.active && sub.renewalStatus !== "Cancelled"),
     [subscriptions]
   );
-
-  const handleLogoError = (subscriptionId: string) => {
-    setFailedLogos((prev) => new Set(prev).add(subscriptionId));
-  };
 
   const totalMonthly = useMemo(
     () => activeSubscriptions.reduce((sum, sub) => sum + getUSDMonthlyCost(sub), 0),
@@ -344,24 +340,22 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
                 <div key={sub.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "#f8fafc", border: "1px solid #f1f5f9" }}>
                   <div className="flex items-center gap-3">
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white relative flex-shrink-0"
+                      className="w-9 h-9 rounded-xl flex items-center justify-center relative flex-shrink-0 text-white"
                       style={{
-                        background: failedLogos.has(sub.id) ? sub.color : "white",
-                        backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform, sub.logoDomain)}')` : "none",
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
+                        background: getActiveLogoSrc(sub) ? "white" : sub.color,
+                        color: getActiveLogoSrc(sub) ? "inherit" : "white",
                       }}
                     >
-                      {failedLogos.has(sub.id) ? (
-                        <span style={{ fontSize: "9px", fontWeight: 700, color: "white" }}>{sub.logo}</span>
-                      ) : (
+                      {getActiveLogoSrc(sub) ? (
                         <img
-                          src={getClearbitLogoUrl(sub.platform, sub.logoDomain)}
+                          src={getActiveLogoSrc(sub)}
                           alt={sub.platform}
                           className="w-full h-full object-contain rounded-xl"
                           style={{ padding: "1px" }}
-                          onError={() => handleLogoError(sub.id)}
+                          onError={() => handleLogoError(sub.id, sub.platform, sub.logoDomain)}
                         />
+                      ) : (
+                        <span style={{ fontSize: "9px", fontWeight: 700 }}>{sub.logo}</span>
                       )}
                     </div>
                     <div>

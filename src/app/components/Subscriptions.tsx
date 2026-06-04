@@ -9,12 +9,9 @@ import {
   Team,
   Category,
   getTeamIdentity,
-  getPlatformDomain,
-  getLogoDevUrl,
-  getDuckDuckGoLogoUrl,
-  getGoogleFaviconUrl,
 } from "../data/subscriptions";
 import { AddEditModal } from "./AddEditModal";
+import { usePlatformLogo } from "../hooks/usePlatformLogo";
 
 interface SubscriptionsProps {
   subscriptions: Subscription[];
@@ -24,8 +21,6 @@ interface SubscriptionsProps {
   categories: Category[];
   teams: Team[];
 }
-
-const LOGO_DEV_PUBLISHABLE_KEY = import.meta.env.VITE_LOGODEV_PUBLISHABLE_KEY || "pk_Ayi1izciTGGDgwz5n1STxA";
 
 export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categories, teams }: SubscriptionsProps) {
   const [search, setSearch] = useState("");
@@ -41,7 +36,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
   const [copiedField, setCopiedField] = useState<"username" | "password" | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
-  const [logoFallbackStage, setLogoFallbackStage] = useState<Record<string, number>>({});
+  const { getActiveLogoSrc, handleLogoError } = usePlatformLogo();
 
   const filtered = subscriptions.filter((s) => {
     const term = search.toLowerCase();
@@ -154,36 +149,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
     setTimeout(() => setCopiedField(null), 1500);
   };
 
-  const getPlatformLogoSources = (platform: string, preferredDomain?: string) => {
-    const domain = getPlatformDomain(platform, preferredDomain);
-    return [
-      getLogoDevUrl(domain, LOGO_DEV_PUBLISHABLE_KEY),
-      getDuckDuckGoLogoUrl(domain),
-      getGoogleFaviconUrl(domain),
-    ].filter(Boolean);
-  };
 
-  const handleLogoError = (platformId: string, platform: string) => {
-    const subscription = subscriptions.find((item) => item.id === platformId);
-    const sources = getPlatformLogoSources(platform, subscription?.logoDomain);
-    setLogoFallbackStage((prev) => {
-      const currentStage = prev[platformId] ?? 0;
-      if (currentStage >= sources.length - 1) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [platformId]: currentStage + 1,
-      };
-    });
-  };
-
-  const getActiveLogoSrc = (subscription: Subscription) => {
-    const sources = getPlatformLogoSources(subscription.platform, subscription.logoDomain);
-    const stage = logoFallbackStage[subscription.id] ?? 0;
-    return sources[stage] || "";
-  };
 
   return (
     <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
@@ -287,6 +253,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
 
       {/* Table */}
       <div className="rounded-[28px] overflow-hidden border border-slate-200 shadow-sm" style={{ background: "white" }}>
+        <div className="overflow-x-auto">
         <table className="w-full" style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
@@ -368,7 +335,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
                                 alt={sub.platform}
                                 className="w-full h-full object-contain rounded-xl"
                                 style={{ padding: "1px" }}
-                                onError={() => handleLogoError(sub.id, sub.platform)}
+                                onError={() => handleLogoError(sub.id, sub.platform, sub.logoDomain)}
                               />
                             ) : (
                               <span style={{ fontSize: "9px", fontWeight: 700 }}>{sub.logo}</span>
@@ -446,6 +413,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {detailOpen && detailTarget && (

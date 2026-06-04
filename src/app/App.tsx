@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Menu } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { Subscriptions } from "./components/Subscriptions";
@@ -16,6 +17,7 @@ const AUTH_STORAGE_KEY = "subscription-dashboard-auth";
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
   const [settingsSection, setSettingsSection] = useState<any>("users");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     try {
       return localStorage.getItem(AUTH_STORAGE_KEY) === "true";
@@ -289,25 +291,46 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       <Sidebar
         activePage={page}
-        onNavigate={setPage}
+        onNavigate={(p) => { setPage(p); setSidebarOpen(false); }}
         onNavigateToProfile={() => {
           setPage("settings");
           setSettingsSection("profile");
+          setSidebarOpen(false);
         }}
         onNavigateToSettings={() => {
           setPage("settings");
           setSettingsSection("users");
+          setSidebarOpen(false);
         }}
         onNavigateToNotifications={() => {
           setPage("settings");
           setSettingsSection("notifications");
+          setSidebarOpen(false);
         }}
         onLogout={handleLogout}
         profile={profile}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto min-w-0">
+        <div className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 sticky top-0 z-20">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
+            style={{ color: "#0f172a" }}
+          >
+            <Menu size={20} />
+          </button>
+          <span style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>Tracker</span>
+        </div>
         {page === "dashboard" && (
           <Dashboard
             loading={loading}

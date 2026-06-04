@@ -217,7 +217,7 @@ export function Reports({ subscriptions }: ReportsProps) {
         <p style={{ color: "#64748b", fontSize: "14px" }}>Deep dive into your subscription spending</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {summaryCards.map((card) => (
           <div key={card.label} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div className="w-2 h-2 rounded-full mb-3" style={{ background: card.color }} />
@@ -227,8 +227,8 @@ export function Reports({ subscriptions }: ReportsProps) {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Spending Trend</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Current monthly spend and steady projection</p>
           <ResponsiveContainer width="100%" height={220}>
@@ -249,7 +249,7 @@ export function Reports({ subscriptions }: ReportsProps) {
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Subscriptions by cycle type</p>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
-              <Pie data={cycleData} cx="50%" cy="50%" outerRadius={72} paddingAngle={4} dataKey="value" label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
+              <Pie data={cycleData} cx="50%" cy="50%" outerRadius={72} paddingAngle={4} dataKey="value">
                 {cycleData.map((entry) => (
                   <Cell key={entry.name} fill={CYCLE_COLORS[entry.name as keyof typeof CYCLE_COLORS] || "#6366f1"} />
                 ))}
@@ -271,7 +271,7 @@ export function Reports({ subscriptions }: ReportsProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Spend by Category</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Monthly cost per category</p>

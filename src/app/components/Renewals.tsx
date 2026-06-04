@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Bell, CheckCircle, AlertTriangle, Clock, MoreVertical } from "lucide-react";
-import { Subscription, getDaysUntilExpiry, getClearbitLogoUrl, getNextExpiryDate } from "../data/subscriptions";
+import { Subscription, getDaysUntilExpiry, getNextExpiryDate } from "../data/subscriptions";
+import { usePlatformLogo } from "../hooks/usePlatformLogo";
 
 interface RenewalsProps {
   subscriptions: Subscription[];
@@ -9,13 +10,9 @@ interface RenewalsProps {
 
 export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
   const [view, setView] = useState<"upcoming" | "history">("upcoming");
-  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ sub: Subscription; status: "Paid" | "Failed" | "Cancelled" } | null>(null);
-
-  const handleLogoError = (subscriptionId: string) => {
-    setFailedLogos((prev) => new Set(prev).add(subscriptionId));
-  };
+  const { getActiveLogoSrc, handleLogoError } = usePlatformLogo();
 
   const sorted = useMemo(
     () => [...subscriptions].sort((a, b) => getDaysUntilExpiry(a.expiryDate) - getDaysUntilExpiry(b.expiryDate)),
@@ -121,24 +118,22 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
       >
         <div className="flex items-center gap-4">
           <div
-            className="w-11 h-11 rounded-[16px] flex items-center justify-center text-white relative flex-shrink-0"
+            className="w-11 h-11 rounded-[16px] flex items-center justify-center relative flex-shrink-0 text-white"
             style={{
-              background: failedLogos.has(sub.id) ? sub.color : "white",
-              backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform, sub.logoDomain)}')` : "none",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
+              background: getActiveLogoSrc(sub) ? "white" : sub.color,
+              color: getActiveLogoSrc(sub) ? "inherit" : "white",
             }}
           >
-            {failedLogos.has(sub.id) ? (
-              <span style={{ fontSize: "10px", fontWeight: 700 }}>{sub.logo}</span>
-            ) : (
+            {getActiveLogoSrc(sub) ? (
               <img
-                src={getClearbitLogoUrl(sub.platform, sub.logoDomain)}
+                src={getActiveLogoSrc(sub)}
                 alt={sub.platform}
                 className="w-full h-full object-contain rounded-[16px]"
                 style={{ padding: "1px" }}
-                onError={() => handleLogoError(sub.id)}
+                onError={() => handleLogoError(sub.id, sub.platform, sub.logoDomain)}
               />
+            ) : (
+              <span style={{ fontSize: "10px", fontWeight: 700 }}>{sub.logo}</span>
             )}
           </div>
           <div>
@@ -146,7 +141,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
               <p style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a" }}>{sub.platform}</p>
               <span className="px-2 py-0.5 rounded-md" style={{ fontSize: "10px", fontWeight: 600, background: "#f1f5f9", color: "#64748b" }}>{sub.plan}</span>
             </div>
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2 mt-2">
               <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 700, background: "#eef2ff", color: "#6366f1" }}>
                 {sub.cycle}
               </span>

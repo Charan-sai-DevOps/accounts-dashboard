@@ -11,6 +11,7 @@ import {
   User,
   BellRing,
   ShieldCheck,
+  X,
 } from "lucide-react";
 
 type Page =
@@ -31,6 +32,8 @@ interface SidebarProps {
     username: string;
     email: string;
   };
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const navItems: {
@@ -73,6 +76,8 @@ export function Sidebar({
   onNavigateToNotifications,
   onLogout,
   profile,
+  isOpen = false,
+  onClose,
 }: SidebarProps) {
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -83,7 +88,7 @@ export function Sidebar({
 
   return (
     <aside
-      className="w-64 min-h-screen flex flex-col"
+      className={`fixed inset-y-0 left-0 z-40 w-64 flex flex-col transition-transform duration-300 lg:static lg:translate-x-0 lg:z-auto ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       style={{
         background:
           "linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%)",
@@ -91,6 +96,7 @@ export function Sidebar({
     >
       {/* Logo */}
       <div className="px-6 py-6 border-b border-white/10">
+        <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center"
@@ -122,6 +128,14 @@ export function Sidebar({
               Subscription Manager
             </p>
           </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+          style={{ color: "#94a3b8" }}
+        >
+          <X size={18} />
+        </button>
         </div>
       </div>
 

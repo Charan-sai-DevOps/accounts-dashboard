@@ -408,8 +408,41 @@ export function SettingsPage({
   const platformOptions = Array.from(new Set(subscriptions.map((s) => s.platform)));
 
   return (
-    <div className="flex h-full min-h-screen" style={{ background: "#f8fafc" }}>
-      <div className="w-64 flex-shrink-0 p-5 flex flex-col gap-2" style={{ background: "white", borderRight: "1px solid #e2e8f0", minHeight: "100vh" }}>
+    <div className="flex flex-col lg:flex-row min-h-full" style={{ background: "#f8fafc" }}>
+
+      {/* Mobile: horizontal scrollable tab strip */}
+      <div className="lg:hidden bg-white border-b border-slate-200 sticky top-0 z-10">
+        <div className="px-4 pt-4 pb-1">
+          <h2 style={{ color: "#0f172a", fontSize: "16px", fontWeight: 700, marginBottom: "2px" }}>Settings</h2>
+          <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "10px" }}>Manage your account</p>
+        </div>
+        <div className="flex overflow-x-auto gap-1 px-3 pb-3 scrollbar-none" style={{ WebkitOverflowScrolling: "touch" }}>
+          {settingsNav.map((item) => {
+            const active = section === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setSection(item.id)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl flex-shrink-0 transition-all"
+                style={{
+                  background: active ? "rgba(99,102,241,0.1)" : "#f8fafc",
+                  border: active ? "1px solid rgba(99,102,241,0.25)" : "1px solid #e2e8f0",
+                  color: active ? "#6366f1" : "#64748b",
+                  fontSize: "12px",
+                  fontWeight: active ? 700 : 500,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span style={{ color: active ? "#6366f1" : "#94a3b8" }}>{item.icon}</span>
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Desktop: left sidebar */}
+      <div className="hidden lg:flex w-64 flex-shrink-0 p-5 flex-col gap-2" style={{ background: "white", borderRight: "1px solid #e2e8f0", minHeight: "100%" }}>
         <div className="mb-4">
           <h2 style={{ color: "#0f172a", marginBottom: "4px" }}>Settings</h2>
           <p style={{ fontSize: "12px", color: "#94a3b8" }}>Manage your account</p>
@@ -440,17 +473,17 @@ export function SettingsPage({
         })}
       </div>
 
-      <div className="flex-1 p-8 overflow-y-auto">
+      <div className="flex-1 p-4 lg:p-8">
         {section === "users" && (
           <div className="flex flex-col gap-6 max-w-4xl">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>User Management</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>Manage team members, roles, and access</p>
               </div>
               <button
                 onClick={() => setShowCreateUser(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white flex-shrink-0"
                 style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.3)" }}
               >
                 <Plus size={15} />
@@ -458,7 +491,7 @@ export function SettingsPage({
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {[
                 { label: "Total Users", value: users.length, color: "#6366f1", bg: "rgba(99,102,241,0.08)" },
                 { label: "Admins", value: users.filter((u) => u.role === "Admin").length, color: "#f59e0b", bg: "rgba(245,158,11,0.08)" },
@@ -490,6 +523,7 @@ export function SettingsPage({
             </div>
 
             <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #e2e8f0" }}>
+              <div className="overflow-x-auto">
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
@@ -552,6 +586,7 @@ export function SettingsPage({
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
@@ -803,14 +838,14 @@ export function SettingsPage({
 
         {section === "categories" && (
           <div className="flex flex-col gap-6 max-w-3xl">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Categories</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>View all categories and associated platforms</p>
               </div>
               <button
                 onClick={() => setShowCreateCategory(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white flex-shrink-0"
                 style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.3)" }}
               >
                 <Plus size={15} />
@@ -848,14 +883,14 @@ export function SettingsPage({
 
         {section === "teams" && (
           <div className="flex flex-col gap-6 max-w-3xl">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Teams</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>View and manage the teams used in subscriptions</p>
               </div>
               <button
                 onClick={() => setShowCreateTeam(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white flex-shrink-0"
                 style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.3)" }}
               >
                 <Plus size={15} />
@@ -886,14 +921,14 @@ export function SettingsPage({
 
         {section === "notifications" && (
           <div className="flex flex-col gap-6 max-w-2xl">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Notifications</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>Configure renewal reminders and alerts</p>
               </div>
               <button
                 onClick={() => setShowAddNotif(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white flex-shrink-0"
                 style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.3)" }}
               >
                 <Plus size={15} />
