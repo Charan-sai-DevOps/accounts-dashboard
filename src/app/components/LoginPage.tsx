@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Lock, Mail, LogIn } from "lucide-react";
+import { Lock, Mail, LogIn, Eye, EyeOff } from "lucide-react";
 
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -8,6 +8,7 @@ interface LoginPageProps {
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [email, setEmail] = useState("charan.sai@webomindapps.com");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,10 +61,19 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               <input
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                type="password"
+                type={passwordVisible ? "text" : "password"}
                 className="w-full bg-transparent outline-none text-white placeholder:text-slate-500"
                 placeholder="Enter password"
               />
+              <button
+                type="button"
+                onClick={() => setPasswordVisible((current) => !current)}
+                className="flex-shrink-0 transition-colors"
+                style={{ color: "#94a3b8" }}
+                aria-label={passwordVisible ? "Hide password" : "Show password"}
+              >
+                {passwordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 

@@ -124,7 +124,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
             className="w-11 h-11 rounded-[16px] flex items-center justify-center text-white relative flex-shrink-0"
             style={{
               background: failedLogos.has(sub.id) ? sub.color : "white",
-              backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform)}')` : "none",
+              backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform, sub.logoDomain)}')` : "none",
               backgroundSize: "cover",
               backgroundPosition: "center",
             }}
@@ -133,7 +133,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
               <span style={{ fontSize: "10px", fontWeight: 700 }}>{sub.logo}</span>
             ) : (
               <img
-                src={getClearbitLogoUrl(sub.platform)}
+                src={getClearbitLogoUrl(sub.platform, sub.logoDomain)}
                 alt={sub.platform}
                 className="w-full h-full object-contain rounded-[16px]"
                 style={{ padding: "1px" }}

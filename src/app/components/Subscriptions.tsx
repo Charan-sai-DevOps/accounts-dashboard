@@ -1,6 +1,19 @@
 import { useState } from "react";
 import { Plus, Search, Edit2, Trash2, Download, Filter, Eye, EyeOff, Copy, Check, AlertTriangle } from "lucide-react";
-import { Subscription, getDaysUntilExpiry, getMonthlyCost, getClearbitLogoUrl, USD_TO_INR, teamColors, Team, Category, getTeamIdentity } from "../data/subscriptions";
+import {
+  Subscription,
+  getDaysUntilExpiry,
+  getMonthlyCost,
+  USD_TO_INR,
+  teamColors,
+  Team,
+  Category,
+  getTeamIdentity,
+  getPlatformDomain,
+  getLogoDevUrl,
+  getDuckDuckGoLogoUrl,
+  getGoogleFaviconUrl,
+} from "../data/subscriptions";
 import { AddEditModal } from "./AddEditModal";
 
 interface SubscriptionsProps {
@@ -11,6 +24,8 @@ interface SubscriptionsProps {
   categories: Category[];
   teams: Team[];
 }
+
+const LOGO_DEV_PUBLISHABLE_KEY = import.meta.env.VITE_LOGODEV_PUBLISHABLE_KEY || "pk_Ayi1izciTGGDgwz5n1STxA";
 
 export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categories, teams }: SubscriptionsProps) {
   const [search, setSearch] = useState("");
@@ -26,7 +41,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
   const [copiedField, setCopiedField] = useState<"username" | "password" | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
-  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
+  const [logoFallbackStage, setLogoFallbackStage] = useState<Record<string, number>>({});
 
   const filtered = subscriptions.filter((s) => {
     const term = search.toLowerCase();
@@ -139,9 +154,35 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
     setTimeout(() => setCopiedField(null), 1500);
   };
 
-  const handleLogoError = (platformId: string) => {
-    console.warn(`Logo failed to load for platform ID: ${platformId}`);
-    setFailedLogos((prev) => new Set(prev).add(platformId));
+  const getPlatformLogoSources = (platform: string, preferredDomain?: string) => {
+    const domain = getPlatformDomain(platform, preferredDomain);
+    return [
+      getLogoDevUrl(domain, LOGO_DEV_PUBLISHABLE_KEY),
+      getDuckDuckGoLogoUrl(domain),
+      getGoogleFaviconUrl(domain),
+    ].filter(Boolean);
+  };
+
+  const handleLogoError = (platformId: string, platform: string) => {
+    const subscription = subscriptions.find((item) => item.id === platformId);
+    const sources = getPlatformLogoSources(platform, subscription?.logoDomain);
+    setLogoFallbackStage((prev) => {
+      const currentStage = prev[platformId] ?? 0;
+      if (currentStage >= sources.length - 1) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [platformId]: currentStage + 1,
+      };
+    });
+  };
+
+  const getActiveLogoSrc = (subscription: Subscription) => {
+    const sources = getPlatformLogoSources(subscription.platform, subscription.logoDomain);
+    const stage = logoFallbackStage[subscription.id] ?? 0;
+    return sources[stage] || "";
   };
 
   return (
@@ -317,26 +358,20 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
                           <div
                             className="w-8 h-8 rounded-xl flex items-center justify-center text-base flex-shrink-0 relative"
                             style={{
-                              background: failedLogos.has(sub.id) ? sub.color : "white",
-                              backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform)}')` : "none",
-                              backgroundSize: "cover",
-                              backgroundPosition: "center",
-                              color: failedLogos.has(sub.id) ? "white" : "inherit",
+                              background: "white",
+                              color: "inherit",
                             }}
                           >
-                            {failedLogos.has(sub.id) ? (
-                              <span style={{ fontSize: "9px", fontWeight: 700 }}>{sub.logo}</span>
-                            ) : (
+                            {getActiveLogoSrc(sub) ? (
                               <img
-                                src={getClearbitLogoUrl(sub.platform)}
+                                src={getActiveLogoSrc(sub)}
                                 alt={sub.platform}
                                 className="w-full h-full object-contain rounded-xl"
                                 style={{ padding: "1px" }}
-                                onError={() => {
-                                  console.warn(`Logo failed for: ${sub.platform}`);
-                                  handleLogoError(sub.id);
-                                }}
+                                onError={() => handleLogoError(sub.id, sub.platform)}
                               />
+                            ) : (
+                              <span style={{ fontSize: "9px", fontWeight: 700 }}>{sub.logo}</span>
                             )}
                           </div>
                           <span style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>{sub.platform}</span>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, Search, Loader2 } from "lucide-react";
 import { Subscription, BillingCycle, PaymentMode, Category, Currency, Team, getPlatformIdentity } from "../data/subscriptions";
 
 interface AddEditModalProps {
@@ -14,9 +14,15 @@ const CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
 const PAYMENT_MODES: PaymentMode[] = ["Card", "UPI"];
 const CURRENCIES: Currency[] = ["INR", "USD"];
 
+interface BrandSearchResult {
+  name: string;
+  domain: string;
+}
+
 export function AddEditModal({ subscription, onSave, onClose, categories, teams }: AddEditModalProps) {
   const [form, setForm] = useState({
     platform: "",
+    logoDomain: "",
     plan: "",
     cost: "",
     currency: "INR" as Currency,
@@ -36,11 +42,15 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
     logo: "",
     active: true,
   });
+  const [brandSuggestions, setBrandSuggestions] = useState<BrandSearchResult[]>([]);
+  const [brandSearchLoading, setBrandSearchLoading] = useState(false);
+  const [brandSearchOpen, setBrandSearchOpen] = useState(false);
 
   useEffect(() => {
     if (subscription) {
       setForm({
         platform: subscription.platform,
+        logoDomain: subscription.logoDomain || "",
         plan: subscription.plan,
         cost: subscription.cost.toString(),
         currency: subscription.currency || "INR",
@@ -63,9 +73,65 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
     }
   }, [subscription]);
 
+  useEffect(() => {
+    const query = form.platform.trim();
+
+    if (subscription || query.length < 2) {
+      setBrandSuggestions([]);
+      setBrandSearchLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setBrandSearchLoading(true);
+
+      try {
+        const response = await fetch(`/api/logo-search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Brand search failed: ${response.status}`);
+        }
+
+        const data = (await response.json()) as BrandSearchResult[];
+        setBrandSuggestions(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.warn("Failed to fetch brand suggestions:", error);
+          setBrandSuggestions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setBrandSearchLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [form.platform, subscription]);
+
   const handlePlatformChange = (val: string) => {
     const identity = getPlatformIdentity(val);
-    setForm((f) => ({ ...f, platform: val, color: identity.color, logo: identity.logo }));
+    setForm((f) => ({ ...f, platform: val, logoDomain: "", color: identity.color, logo: identity.logo }));
+    setBrandSearchOpen(true);
+  };
+
+  const handleSelectBrand = (brand: BrandSearchResult) => {
+    const identity = getPlatformIdentity(brand.name);
+    setForm((f) => ({
+      ...f,
+      platform: brand.name,
+      logoDomain: brand.domain,
+      color: identity.color,
+      logo: identity.logo,
+    }));
+    setBrandSuggestions([]);
+    setBrandSearchOpen(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -115,9 +181,40 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
                 placeholder="e.g. Netflix"
                 className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                 style={fieldStyle}
-                onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#6366f1";
+                  setBrandSearchOpen(true);
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#e2e8f0";
+                  window.setTimeout(() => setBrandSearchOpen(false), 150);
+                }}
               />
+              {(brandSearchOpen && (brandSearchLoading || brandSuggestions.length > 0)) && (
+                <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                  <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-500">
+                    {brandSearchLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                    {brandSearchLoading ? "Searching brands..." : "Select a matching brand"}
+                  </div>
+                  <div className="max-h-56 overflow-y-auto">
+                    {brandSuggestions.map((brand) => (
+                      <button
+                        key={`${brand.name}-${brand.domain}`}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleSelectBrand(brand)}
+                        className="w-full rounded-2xl px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                      >
+                        <p className="text-sm font-semibold text-slate-950">{brand.name}</p>
+                        <p className="text-xs text-slate-500">{brand.domain}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!brandSearchLoading && brandSearchOpen && form.logoDomain && (
+                <p className="mt-2 text-xs text-slate-500">Selected domain: {form.logoDomain}</p>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Plan *</label>

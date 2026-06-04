@@ -7,6 +7,7 @@ export type Team = string;
 export interface Subscription {
   id: string;
   platform: string;
+  logoDomain?: string;
   plan: string;
   cost: number;
   currency: Currency;
@@ -82,6 +83,8 @@ platformDomainMap["Claude"] = "claude.ai";
 platformDomainMap["Prime Video"] = "primevideo.com";
 platformDomainMap["PrimeVideo"] = "primevideo.com";
 platformDomainMap["Claude AI"] = "claude.ai";
+
+const warnedPlatforms = new Set<string>();
 
 const platformPresetMap: Record<string, { color: string; logo: string }> = {
   netflix: { color: "#E50914", logo: "N" },
@@ -175,6 +178,7 @@ function normalizeNumber(value: unknown): number | null {
 
 export function sanitizeSubscription(raw: RawSubscription): Subscription | null {
   const platform = normalizeString(raw.platform);
+  const logoDomain = normalizeString(raw.logoDomain);
   const cost = normalizeNumber(raw.cost);
   const purchaseDate = isValidDate(raw.purchaseDate) ? raw.purchaseDate : "";
   const expiryDate = isValidDate(raw.expiryDate) ? raw.expiryDate : "";
@@ -195,6 +199,7 @@ export function sanitizeSubscription(raw: RawSubscription): Subscription | null 
   return {
     id: typeof raw.id === "string" && raw.id.trim() ? raw.id : `${platform}-${purchaseDate}-${expiryDate}`,
     platform,
+    logoDomain: logoDomain || undefined,
     plan: normalizeString(raw.plan) || "Plan not set",
     cost,
     currency,
@@ -245,19 +250,46 @@ export function getTeamIdentity(team: string): { bg: string; color: string; ligh
   };
 }
 
-export function getClearbitLogoUrl(platform: string): string {
+export function getPlatformDomain(platform: string, preferredDomain?: string): string {
+  if (preferredDomain) return preferredDomain;
   if (!platform) return "";
+
   let domain = platformDomainMap[platform];
   if (!domain) {
-    const foundKey = Object.keys(platformDomainMap).find((k) => k.toLowerCase() === platform.toLowerCase());
+    const foundKey = Object.keys(platformDomainMap).find((key) => key.toLowerCase() === platform.toLowerCase());
     if (foundKey) domain = platformDomainMap[foundKey];
   }
+
   if (!domain) {
     const slug = platform.toLowerCase().replace(/[^a-z0-9]+/g, "");
     domain = `${slug}.com`;
-    console.warn(`Platform domain mapping not found for: ${platform}. Guessing domain: ${domain}`);
+
+    if (!warnedPlatforms.has(platform)) {
+      warnedPlatforms.add(platform);
+      console.warn(`Platform domain mapping not found for: ${platform}. Guessing domain: ${domain}`);
+    }
   }
+
+  return domain;
+}
+
+export function getLogoDevUrl(domain: string, publishableKey?: string): string {
+  if (!domain || !publishableKey) return "";
+  return `https://img.logo.dev/${domain}?token=${publishableKey}&size=128&format=png`;
+}
+
+export function getDuckDuckGoLogoUrl(domain: string): string {
+  if (!domain) return "";
   return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+}
+
+export function getGoogleFaviconUrl(domain: string): string {
+  if (!domain) return "";
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+}
+
+export function getClearbitLogoUrl(platform: string, preferredDomain?: string): string {
+  return getDuckDuckGoLogoUrl(getPlatformDomain(platform, preferredDomain));
 }
 
 export const initialSubscriptions: Subscription[] = [

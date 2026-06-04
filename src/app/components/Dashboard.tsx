@@ -18,6 +18,7 @@ import {
 
 interface DashboardProps {
   subscriptions: Subscription[];
+  loading?: boolean;
   onNavigate: (page: "subscriptions" | "renewals") => void;
 }
 
@@ -41,7 +42,7 @@ function formatOriginalAmount(subscription: Subscription) {
     : `Rs. ${subscription.cost.toFixed(0)}`;
 }
 
-export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
+export function Dashboard({ subscriptions, loading = false, onNavigate }: DashboardProps) {
   const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
 
   const activeSubscriptions = useMemo(
@@ -191,15 +192,44 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Overview</h1>
+            <p style={{ color: "#64748b", fontSize: "14px" }}>Loading your subscriptions...</p>
+          </div>
+          <div className="px-4 py-2 rounded-xl" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "white", fontSize: "13px", fontWeight: 600 }}>
+            {currentMonthYear}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div
+              key={index}
+              className="rounded-2xl p-5 animate-pulse"
+              style={{ background: "white", border: "1px solid #e2e8f0", minHeight: "132px" }}
+            />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <div className="xl:col-span-2 rounded-2xl animate-pulse" style={{ background: "white", border: "1px solid #e2e8f0", minHeight: "292px" }} />
+          <div className="rounded-2xl animate-pulse" style={{ background: "white", border: "1px solid #e2e8f0", minHeight: "292px" }} />
+        </div>
+      </div>
+    );
+  }
+
   if (activeSubscriptions.length === 0) {
     return (
       <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
         <div>
           <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Overview</h1>
-          <p style={{ color: "#64748b", fontSize: "14px" }}>Only valid active subscriptions are shown here</p>
+          <p style={{ color: "#64748b", fontSize: "14px" }}>No active subscriptions available yet</p>
         </div>
         <div className="rounded-2xl p-10 text-center" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-          <p style={{ color: "#0f172a", fontSize: "18px", fontWeight: 600 }}>No clean subscription data found</p>
+          <p style={{ color: "#0f172a", fontSize: "18px", fontWeight: 600 }}>No subscriptions found</p>
           <p style={{ color: "#64748b", fontSize: "14px", marginTop: "8px" }}>
             Add subscriptions from the subscriptions page and the dashboard will populate automatically.
           </p>
@@ -317,7 +347,7 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
                       className="w-9 h-9 rounded-xl flex items-center justify-center text-white relative flex-shrink-0"
                       style={{
                         background: failedLogos.has(sub.id) ? sub.color : "white",
-                        backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform)}')` : "none",
+                        backgroundImage: !failedLogos.has(sub.id) ? `url('${getClearbitLogoUrl(sub.platform, sub.logoDomain)}')` : "none",
                         backgroundSize: "cover",
                         backgroundPosition: "center",
                       }}
@@ -326,7 +356,7 @@ export function Dashboard({ subscriptions, onNavigate }: DashboardProps) {
                         <span style={{ fontSize: "9px", fontWeight: 700, color: "white" }}>{sub.logo}</span>
                       ) : (
                         <img
-                          src={getClearbitLogoUrl(sub.platform)}
+                          src={getClearbitLogoUrl(sub.platform, sub.logoDomain)}
                           alt={sub.platform}
                           className="w-full h-full object-contain rounded-xl"
                           style={{ padding: "1px" }}

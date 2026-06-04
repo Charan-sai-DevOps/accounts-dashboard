@@ -310,6 +310,7 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         {page === "dashboard" && (
           <Dashboard
+            loading={loading}
             subscriptions={subscriptions}
             onNavigate={(p) => setPage(p)}
           />
