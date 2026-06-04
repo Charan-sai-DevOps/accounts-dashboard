@@ -86,6 +86,12 @@ platformDomainMap["Claude AI"] = "claude.ai";
 
 const warnedPlatforms = new Set<string>();
 
+// Create lowercase lookup map for O(1) domain lookups instead of O(n)
+const platformDomainMapLowercase: Record<string, string> = {};
+Object.entries(platformDomainMap).forEach(([key, value]) => {
+  platformDomainMapLowercase[key.toLowerCase()] = value;
+});
+
 const platformPresetMap: Record<string, { color: string; logo: string }> = {
   netflix: { color: "#E50914", logo: "N" },
   spotify: { color: "#1DB954", logo: "S" },
@@ -254,10 +260,12 @@ export function getPlatformDomain(platform: string, preferredDomain?: string): s
   if (preferredDomain) return preferredDomain;
   if (!platform) return "";
 
+  // Try exact match first (O(1))
   let domain = platformDomainMap[platform];
+
+  // Try lowercase match (O(1) with reverse map)
   if (!domain) {
-    const foundKey = Object.keys(platformDomainMap).find((key) => key.toLowerCase() === platform.toLowerCase());
-    if (foundKey) domain = platformDomainMap[foundKey];
+    domain = platformDomainMapLowercase[platform.toLowerCase()];
   }
 
   if (!domain) {

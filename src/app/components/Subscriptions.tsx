@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Search, Edit2, Trash2, Download, Filter, Eye, EyeOff, Copy, Check, AlertTriangle } from "lucide-react";
+import { useState, useMemo, memo } from "react";
+import { Plus, Search, Edit2, Trash2, Download, Filter, Eye, EyeOff, Copy, Check, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Subscription,
   getDaysUntilExpiry,
@@ -12,6 +12,7 @@ import {
 } from "../data/subscriptions";
 import { AddEditModal } from "./AddEditModal";
 import { usePlatformLogo } from "../hooks/usePlatformLogo";
+import { useDebounce } from "../hooks/useDebounce";
 
 interface SubscriptionsProps {
   subscriptions: Subscription[];
@@ -20,10 +21,12 @@ interface SubscriptionsProps {
   onDelete: (id: string) => void;
   categories: Category[];
   teams: Team[];
+  currentUserRole?: "Admin" | "Member" | "Viewer";
 }
 
-export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categories, teams }: SubscriptionsProps) {
+function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, categories, teams, currentUserRole = "Admin" }: SubscriptionsProps) {
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [filterCycle, setFilterCycle] = useState("All");
   const [purchaseFrom, setPurchaseFrom] = useState("");
   const [purchaseTo, setPurchaseTo] = useState("");
@@ -36,42 +39,59 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
   const [copiedField, setCopiedField] = useState<"username" | "password" | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
   const { getActiveLogoSrc, handleLogoError } = usePlatformLogo();
 
-  const filtered = subscriptions.filter((s) => {
-    const term = search.toLowerCase();
-    const matchSearch =
-      s.platform.toLowerCase().includes(term) ||
-      s.plan.toLowerCase().includes(term) ||
-      s.buyer.toLowerCase().includes(term) ||
-      s.accountHolder?.toLowerCase().includes(term) ||
-      s.accountEmail?.toLowerCase().includes(term) ||
-      (s.invoiceFileName || "").toLowerCase().includes(term);
+  const filtered = useMemo(() => {
+    return subscriptions.filter((s) => {
+      const term = debouncedSearch.toLowerCase();
+      const matchSearch =
+        s.platform.toLowerCase().includes(term) ||
+        s.plan.toLowerCase().includes(term) ||
+        s.buyer.toLowerCase().includes(term) ||
+        s.accountHolder?.toLowerCase().includes(term) ||
+        s.accountEmail?.toLowerCase().includes(term) ||
+        (s.invoiceFileName || "").toLowerCase().includes(term);
 
-    const daysUntilExpiry = getDaysUntilExpiry(s.expiryDate);
-    const matchCycle =
-      filterCycle === "All"
-        ? true
-        : filterCycle === "Expired"
-        ? daysUntilExpiry < 0
-        : s.cycle === filterCycle;
+      const daysUntilExpiry = getDaysUntilExpiry(s.expiryDate);
+      const matchCycle =
+        filterCycle === "All"
+          ? true
+          : filterCycle === "Expired"
+          ? daysUntilExpiry < 0
+          : s.cycle === filterCycle;
 
-    const fromOk = !purchaseFrom || new Date(s.purchaseDate) >= new Date(purchaseFrom);
-    const toOk = !purchaseTo || new Date(s.purchaseDate) <= new Date(purchaseTo);
+      const fromOk = !purchaseFrom || new Date(s.purchaseDate) >= new Date(purchaseFrom);
+      const toOk = !purchaseTo || new Date(s.purchaseDate) <= new Date(purchaseTo);
 
-    return matchSearch && matchCycle && fromOk && toOk;
-  });
+      return matchSearch && matchCycle && fromOk && toOk;
+    });
+  }, [subscriptions, debouncedSearch, filterCycle, purchaseFrom, purchaseTo]);
 
-  const activeSubscriptions = subscriptions.filter((subscription) => subscription.active && subscription.renewalStatus !== "Cancelled");
-  const orderedTeams = Array.from(
-    new Set([
-      ...teams,
-      ...filtered.map((subscription) => subscription.team).filter(Boolean),
-    ])
+  const activeSubscriptions = useMemo(
+    () => subscriptions.filter((subscription) => subscription.active && subscription.renewalStatus !== "Cancelled"),
+    [subscriptions]
   );
-  const uniquePlatformCount = new Set(
-    activeSubscriptions.map((subscription) => subscription.platform.trim().toLowerCase()).filter(Boolean)
-  ).size;
+  const uniquePlatformCount = useMemo(
+    () => new Set(
+      activeSubscriptions.map((subscription) => subscription.platform.trim().toLowerCase()).filter(Boolean)
+    ).size,
+    [activeSubscriptions]
+  );
+
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginatedFiltered = useMemo(() => {
+    const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [filtered, currentPage, ITEMS_PER_PAGE]);
+
+  const orderedTeams = useMemo(
+    () => teams.filter((team) =>
+      paginatedFiltered.some((s) => s.team === team)
+    ),
+    [teams, paginatedFiltered]
+  );
 
   const handleSave = (sub: Omit<Subscription, "id">) => {
     if (editTarget) {
@@ -103,6 +123,10 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
   const cancelDelete = () => {
     setPendingDeleteId(null);
     setDeleteTargetName(null);
+  };
+
+  const resetToFirstPage = () => {
+    setCurrentPage(1);
   };
 
   const downloadCSV = () => {
@@ -151,8 +175,11 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
 
 
 
+  const canWrite = currentUserRole === "Admin" || currentUserRole === "Member";
+  const canDelete = currentUserRole === "Admin";
+
   return (
-    <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
+    <div className="flex flex-col gap-6 p-6 min-h-full [&_button]:cursor-pointer" style={{ background: "#f8fafc" }}>
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -170,14 +197,16 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
             <Download size={15} />
             Export CSV
           </button>
-          <button
-            onClick={() => { setEditTarget(null); setModalOpen(true); }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white transition-all"
-            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.35)" }}
-          >
-            <Plus size={16} />
-            Add Subscription
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => { setEditTarget(null); setModalOpen(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white transition-all"
+              style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.35)" }}
+            >
+              <Plus size={16} />
+              Add Subscription
+            </button>
+          )}
         </div>
       </div>
 
@@ -187,7 +216,10 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
           <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "#94a3b8" }} />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              resetToFirstPage();
+            }}
             placeholder="Search platform, plan, buyer..."
             className="w-full pl-12 pr-4 py-3 rounded-2xl outline-none"
             style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
@@ -199,7 +231,10 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
           {["All", "Monthly", "Quarterly", "Annual", "Expired"].map((cycle) => (
             <button
               key={cycle}
-              onClick={() => setFilterCycle(cycle)}
+              onClick={() => {
+                setFilterCycle(cycle);
+                resetToFirstPage();
+              }}
               className="px-4 py-2 rounded-2xl transition-all"
               style={{
                 fontSize: "12px",
@@ -273,7 +308,7 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
               </tr>
             ) : (
               orderedTeams.flatMap((team: Team) => {
-                const teamSubs = filtered.filter((s) => s.team === team);
+                const teamSubs = paginatedFiltered.filter((s) => s.team === team);
                 if (teamSubs.length === 0) return [];
                 const tc = teamColors[team] || getTeamIdentity(team);
                 const teamINRTotal = teamSubs
@@ -389,21 +424,26 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
                           >
                             <Eye size={13} />
                           </button>
-                          <button
-                            onClick={() => handleEdit(sub)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                            style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1" }}
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button
-                            onClick={() => requestDelete(sub)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                            style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}
-                            title="Delete"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          {canWrite && (
+                            <button
+                              onClick={() => handleEdit(sub)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                              style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1" }}
+                              title="Edit"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => requestDelete(sub)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                              style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}
+                              title="Delete"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -414,6 +454,45 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
           </tbody>
         </table>
         </div>
+
+        {filtered.length > ITEMS_PER_PAGE && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200" style={{ background: "#f8fafc" }}>
+            <div style={{ fontSize: "13px", color: "#64748b" }}>
+              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of {filtered.length}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                style={{
+                  border: "1px solid #e2e8f0",
+                  color: currentPage === 1 ? "#cbd5e1" : "#64748b",
+                  background: "white",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <div style={{ fontSize: "13px", color: "#0f172a", fontWeight: 600, minWidth: "80px", textAlign: "center" }}>
+                Page {currentPage} of {totalPages}
+              </div>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                style={{
+                  border: "1px solid #e2e8f0",
+                  color: currentPage === totalPages ? "#cbd5e1" : "#64748b",
+                  background: "white",
+                  cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {detailOpen && detailTarget && (
@@ -635,3 +714,5 @@ export function Subscriptions({ subscriptions, onAdd, onEdit, onDelete, categori
     </div>
   );
 }
+
+export const Subscriptions = memo(SubscriptionsComponent);

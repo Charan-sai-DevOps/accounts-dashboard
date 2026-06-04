@@ -1,5 +1,5 @@
 import { firestore } from "./_firebaseAdmin.js";
-import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD_HASH } from "./_auth.js";
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD_HASH, hashPassword } from "./_auth.js";
 
 const SETTINGS_DOC_ID = "app";
 const SETTINGS_COLLECTION = "settings";
@@ -26,6 +26,13 @@ const defaultAppSettings = {
   notifications: {
     monthlySpendSummary: true,
     newSubscriptionAdded: false,
+  },
+  notificationSettings: {
+    sevenDay: true,
+    threeDayBefore: true,
+    dayOf: false,
+    monthlySummary: true,
+    newSub: false,
   },
 };
 
@@ -63,6 +70,13 @@ function normalizeSettings(data: any) {
       monthlySpendSummary: Boolean(data?.notifications?.monthlySpendSummary ?? true),
       newSubscriptionAdded: Boolean(data?.notifications?.newSubscriptionAdded ?? false),
     },
+    notificationSettings: {
+      sevenDay: Boolean(data?.notificationSettings?.sevenDay ?? true),
+      threeDayBefore: Boolean(data?.notificationSettings?.threeDayBefore ?? true),
+      dayOf: Boolean(data?.notificationSettings?.dayOf ?? false),
+      monthlySummary: Boolean(data?.notificationSettings?.monthlySummary ?? true),
+      newSub: Boolean(data?.notificationSettings?.newSub ?? false),
+    },
   };
 }
 
@@ -72,28 +86,57 @@ export default async function handler(req: any, res: any) {
   if (req.method === "GET") {
     const doc = await docRef.get();
     if (!doc.exists) {
-      return res.status(200).json(defaultAppSettings);
+      return res.status(200).json({ ...defaultAppSettings, appUsers: [] });
     }
 
-    const settings = normalizeSettings(doc.data());
-    return res.status(200).json(settings);
+    const data = doc.data() as any;
+    const settings = normalizeSettings(data);
+    const appUsers = (data?.appUsers ?? []).map((u: any) => ({
+      id: u.id ?? "",
+      name: u.name ?? "",
+      email: u.email ?? "",
+      role: u.role ?? "Member",
+      lastLogin: u.lastLogin ?? "Never",
+      avatar: u.avatar ?? "",
+    }));
+    return res.status(200).json({ ...settings, appUsers });
   }
 
   if (req.method === "PUT") {
     const payload = req.body;
     const existingDoc = await docRef.get();
-    const existingData = existingDoc.exists ? existingDoc.data() : {};
+    const existingData = (existingDoc.exists ? existingDoc.data() : {}) as any;
+
+    if (payload.appUsers !== undefined) {
+      const existingUsers: any[] = existingData?.appUsers ?? [];
+      const usersToStore = (payload.appUsers as any[]).map((u: any) => {
+        const existing = existingUsers.find((e: any) => e.id === u.id);
+        return {
+          id: u.id ?? String(Date.now()),
+          name: u.name ?? "",
+          email: u.email ?? "",
+          role: u.role ?? "Member",
+          passwordHash: u.password
+            ? hashPassword(u.password)
+            : (existing?.passwordHash ?? ""),
+          lastLogin: u.lastLogin ?? "Never",
+          avatar: u.avatar ?? (u.name ? String(u.name)[0].toUpperCase() : "?"),
+        };
+      });
+      await docRef.set({ appUsers: usersToStore }, { merge: true });
+      return res.status(200).json({ ok: true });
+    }
+
+    if (payload.notificationSettings !== undefined) {
+      await docRef.set({ notificationSettings: payload.notificationSettings }, { merge: true });
+      return res.status(200).json({ ok: true });
+    }
+
     const settings = normalizeSettings({
       ...existingData,
       ...payload,
-      profile: {
-        ...(existingData as any)?.profile,
-        ...(payload?.profile ?? {}),
-      },
-      auth: {
-        ...(existingData as any)?.auth,
-        ...(payload?.auth ?? {}),
-      },
+      profile: { ...existingData?.profile, ...(payload?.profile ?? {}) },
+      auth: { ...existingData?.auth, ...(payload?.auth ?? {}) },
     });
     await docRef.set(settings, { merge: true });
     return res.status(200).json(settings);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Menu } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
@@ -12,7 +12,9 @@ import { Subscription, getDaysUntilExpiry, getNextExpiryDate, DEFAULT_CATEGORIES
 // import { collection, doc, onSnapshot, addDoc, setDoc, deleteDoc } from "firebase/firestore";
 
 type Page = "dashboard" | "subscriptions" | "reports" | "renewals" | "settings";
+type UserRole = "Admin" | "Member" | "Viewer";
 const AUTH_STORAGE_KEY = "subscription-dashboard-auth";
+const USER_ROLE_KEY = "subscription-dashboard-user-role";
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
@@ -24,6 +26,13 @@ export default function App() {
     } catch (error) {
       return false;
     }
+  });
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole>(() => {
+    try {
+      const role = localStorage.getItem(USER_ROLE_KEY);
+      if (role === "Admin" || role === "Member" || role === "Viewer") return role;
+    } catch {}
+    return "Admin";
   });
   const [profile, setProfile] = useState({
     username: "",
@@ -88,7 +97,7 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || currentUserRole !== "Admin") return;
 
     const loadSettings = async () => {
       try {
@@ -104,7 +113,7 @@ export default function App() {
     };
 
     void loadSettings();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentUserRole]);
 
   const handleLogin = async (email: string, password: string) => {
     const response = await fetch("/api/auth", {
@@ -115,13 +124,28 @@ export default function App() {
 
     if (!response.ok) {
       const data = await response.json().catch(() => null);
-      throw new Error(data?.message || "Unable to log in.");
+      throw new Error(data?.message || "Invalid email or password.");
     }
+
+    const data = await response.json();
+    const role: UserRole =
+      data.role === "Member" || data.role === "Viewer" ? data.role : "Admin";
 
     try {
       localStorage.setItem(AUTH_STORAGE_KEY, "true");
-    } catch (error) {
-      console.warn("Failed to persist auth state:", error);
+      localStorage.setItem(USER_ROLE_KEY, role);
+    } catch {}
+
+    setCurrentUserRole(role);
+
+    if (role !== "Admin" && data.user) {
+      const userName = (data.user.name || "").trim() || email.split("@")[0];
+      setProfile({
+        username: userName,
+        companyName: "",
+        role,
+        email: data.user.email ?? email,
+      });
     }
 
     setIsAuthenticated(true);
@@ -131,15 +155,17 @@ export default function App() {
   const handleLogout = () => {
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem(USER_ROLE_KEY);
     } catch (error) {
       console.warn("Failed to clear auth state:", error);
     }
+    setCurrentUserRole("Admin");
     setIsAuthenticated(false);
     setPage("dashboard");
     setSettingsSection("users");
   };
 
-  const handleAdd = async (sub: Omit<Subscription, "id">) => {
+  const handleAdd = useCallback(async (sub: Omit<Subscription, "id">) => {
     try {
       const response = await fetch("/api/subscriptions", {
         method: "POST",
@@ -156,9 +182,9 @@ export default function App() {
       console.error("Failed to add subscription:", err);
       setError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, []);
 
-  const handleEdit = async (id: string, sub: Omit<Subscription, "id">) => {
+  const handleEdit = useCallback(async (id: string, sub: Omit<Subscription, "id">) => {
     try {
       const response = await fetch(`/api/subscriptions/${id}`, {
         method: "PUT",
@@ -174,9 +200,9 @@ export default function App() {
       console.error("Failed to update subscription:", err);
       setError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, []);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
       const response = await fetch(`/api/subscriptions/${id}`, {
         method: "DELETE",
@@ -190,9 +216,9 @@ export default function App() {
       console.error("Failed to delete subscription:", err);
       setError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, []);
 
-  const handleCreateCategory = (category: string) => {
+  const handleCreateCategory = useCallback((category: string) => {
     const trimmed = category.trim();
     if (!trimmed) return;
     setCategories((prev) => {
@@ -201,9 +227,9 @@ export default function App() {
       localStorage.setItem("customCategories", JSON.stringify(next.filter((item) => !DEFAULT_CATEGORIES.includes(item))));
       return next;
     });
-  };
+  }, []);
 
-  const handleCreateTeam = (team: string) => {
+  const handleCreateTeam = useCallback((team: string) => {
     const trimmed = team.trim();
     if (!trimmed) return;
     setTeams((prev) => {
@@ -212,9 +238,9 @@ export default function App() {
       localStorage.setItem("customTeams", JSON.stringify(next.filter((item) => !DEFAULT_TEAMS.includes(item))));
       return next;
     });
-  };
+  }, []);
 
-  const handleUpdateProfile = async (updatedProfile: typeof profile) => {
+  const handleUpdateProfile = useCallback(async (updatedProfile: typeof profile) => {
     setProfile(updatedProfile);
 
     try {
@@ -226,10 +252,37 @@ export default function App() {
     } catch (error) {
       console.warn("Failed to persist profile settings:", error);
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    if (loading || autopayProcessingRef.current || subscriptions.length === 0) return;
+  const handleNavigate = useCallback((p: Page) => {
+    setPage(p);
+    setSidebarOpen(false);
+  }, []);
+
+  const handleNavigateToProfile = useCallback(() => {
+    setPage("settings");
+    setSettingsSection("profile");
+    setSidebarOpen(false);
+  }, []);
+
+  const handleNavigateToSettings = useCallback(() => {
+    setPage("settings");
+    setSettingsSection("users");
+    setSidebarOpen(false);
+  }, []);
+
+  const handleNavigateToNotifications = useCallback(() => {
+    setPage("settings");
+    setSettingsSection("notifications");
+    setSidebarOpen(false);
+  }, []);
+
+  const handleCloseSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
+
+  const processAutopayRenewals = async () => {
+    if (autopayProcessingRef.current || subscriptions.length === 0) return;
 
     const dueAutopaySubscriptions = subscriptions.filter(
       (sub) => sub.autoPay && sub.renewalStatus !== "Cancelled" && getDaysUntilExpiry(sub.expiryDate) <= 0
@@ -238,48 +291,28 @@ export default function App() {
     if (dueAutopaySubscriptions.length === 0) return;
 
     autopayProcessingRef.current = true;
-
-    const processAutopayRenewals = async () => {
-      try {
-        for (const sub of dueAutopaySubscriptions) {
-          await handleEdit(sub.id, {
-            ...sub,
-            renewalStatus: "Paid",
-            purchaseDate: sub.expiryDate,
-            expiryDate: getNextExpiryDate(sub),
-          });
-        }
-      } finally {
-        autopayProcessingRef.current = false;
+    try {
+      for (const sub of dueAutopaySubscriptions) {
+        await handleEdit(sub.id, {
+          ...sub,
+          renewalStatus: "Paid",
+          purchaseDate: sub.expiryDate,
+          expiryDate: getNextExpiryDate(sub),
+        });
       }
-    };
+    } finally {
+      autopayProcessingRef.current = false;
+    }
+  };
 
+  useEffect(() => {
+    if (loading) return;
     void processAutopayRenewals();
   }, [loading, subscriptions]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      if (autopayProcessingRef.current) return;
-      const dueAutopaySubscriptions = subscriptions.filter(
-        (sub) => sub.autoPay && sub.renewalStatus !== "Cancelled" && getDaysUntilExpiry(sub.expiryDate) <= 0
-      );
-      if (dueAutopaySubscriptions.length === 0) return;
-
-      autopayProcessingRef.current = true;
-      void (async () => {
-        try {
-          for (const sub of dueAutopaySubscriptions) {
-            await handleEdit(sub.id, {
-              ...sub,
-              renewalStatus: "Paid",
-              purchaseDate: sub.expiryDate,
-              expiryDate: getNextExpiryDate(sub),
-            });
-          }
-        } finally {
-          autopayProcessingRef.current = false;
-        }
-      })();
+      void processAutopayRenewals();
     }, 5 * 60 * 1000);
 
     return () => window.clearInterval(intervalId);
@@ -290,7 +323,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+    <div className="flex h-screen overflow-hidden [&_button]:cursor-pointer" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
@@ -299,26 +332,15 @@ export default function App() {
       )}
       <Sidebar
         activePage={page}
-        onNavigate={(p) => { setPage(p); setSidebarOpen(false); }}
-        onNavigateToProfile={() => {
-          setPage("settings");
-          setSettingsSection("profile");
-          setSidebarOpen(false);
-        }}
-        onNavigateToSettings={() => {
-          setPage("settings");
-          setSettingsSection("users");
-          setSidebarOpen(false);
-        }}
-        onNavigateToNotifications={() => {
-          setPage("settings");
-          setSettingsSection("notifications");
-          setSidebarOpen(false);
-        }}
+        onNavigate={handleNavigate}
+        onNavigateToProfile={handleNavigateToProfile}
+        onNavigateToSettings={handleNavigateToSettings}
+        onNavigateToNotifications={handleNavigateToNotifications}
         onLogout={handleLogout}
         profile={profile}
         isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={handleCloseSidebar}
+        currentUserRole={currentUserRole}
       />
       <main className="flex-1 overflow-y-auto min-w-0">
         <div className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 sticky top-0 z-20">
@@ -335,7 +357,7 @@ export default function App() {
           <Dashboard
             loading={loading}
             subscriptions={subscriptions}
-            onNavigate={(p) => setPage(p)}
+            onNavigate={setPage}
           />
         )}
         {page === "subscriptions" && (
@@ -346,11 +368,12 @@ export default function App() {
             onDelete={handleDelete}
             categories={categories}
             teams={teams}
+            currentUserRole={currentUserRole}
           />
         )}
         {page === "reports" && <Reports subscriptions={subscriptions} />}
         {page === "renewals" && <Renewals subscriptions={subscriptions} onEdit={handleEdit} />}
-        {page === "settings" && (
+        {page === "settings" && currentUserRole === "Admin" && (
           <SettingsPage
             subscriptions={subscriptions}
             section={settingsSection}
@@ -361,6 +384,13 @@ export default function App() {
             onCreateCategory={handleCreateCategory}
             teams={teams}
             onCreateTeam={handleCreateTeam}
+          />
+        )}
+        {page === "settings" && currentUserRole !== "Admin" && (
+          <Dashboard
+            loading={loading}
+            subscriptions={subscriptions}
+            onNavigate={(p) => setPage(p)}
           />
         )}
       </main>

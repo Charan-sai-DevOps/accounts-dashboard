@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Bell, CheckCircle, AlertTriangle, Clock, MoreVertical } from "lucide-react";
+import { useMemo, useState, memo } from "react";
+import { Bell, CheckCircle, AlertTriangle, Clock, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { Subscription, getDaysUntilExpiry, getNextExpiryDate } from "../data/subscriptions";
 import { usePlatformLogo } from "../hooks/usePlatformLogo";
 
@@ -8,10 +8,12 @@ interface RenewalsProps {
   onEdit?: (id: string, sub: Omit<Subscription, "id">) => void;
 }
 
-export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
+function RenewalsComponent({ subscriptions, onEdit }: RenewalsProps) {
   const [view, setView] = useState<"upcoming" | "history">("upcoming");
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ sub: Subscription; status: "Paid" | "Failed" | "Cancelled" } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   const { getActiveLogoSrc, handleLogoError } = usePlatformLogo();
 
   const sorted = useMemo(
@@ -86,6 +88,16 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
     if (historyFilter === "All") return historyItems;
     return historyItems.filter((s) => (s.renewalStatus || "Paid") === historyFilter);
   }, [historyItems, historyFilter]);
+
+  const totalPages = Math.ceil(filteredHistoryItems.length / ITEMS_PER_PAGE);
+  const paginatedHistoryItems = useMemo(() => {
+    const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredHistoryItems.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [filteredHistoryItems, currentPage, ITEMS_PER_PAGE]);
+
+  const resetToFirstPage = () => {
+    setCurrentPage(1);
+  };
 
   const summaryCards = view === "upcoming"
     ? [
@@ -253,7 +265,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
+    <div className="flex flex-col gap-6 p-6 min-h-full [&_button]:cursor-pointer" style={{ background: "#f8fafc" }}>
       {/* Header */}
       <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
         <div className="max-w-2xl">
@@ -314,7 +326,10 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
                   {["All", "Paid", "Failed", "Cancelled", "Autopay"].map((status) => (
                     <button
                       key={status}
-                      onClick={() => setHistoryFilter(status as "All" | "Paid" | "Failed" | "Cancelled" | "Autopay")}
+                      onClick={() => {
+                        setHistoryFilter(status as "All" | "Paid" | "Failed" | "Cancelled" | "Autopay");
+                        resetToFirstPage();
+                      }}
                       className="px-4 py-2 rounded-[16px] transition-all"
                       style={{
                         fontSize: "12px",
@@ -364,7 +379,7 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
                         No renewal history available
                       </td>
                     </tr>
-                  ) : filteredHistoryItems.map((sub) => (
+                  ) : paginatedHistoryItems.map((sub) => (
                     <tr key={sub.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '14px 16px', fontSize: '13px', color: '#0f172a' }}>{sub.platform}</td>
                       <td style={{ padding: '14px 16px', fontSize: '13px', color: '#0f172a' }}>{sub.plan}</td>
@@ -381,6 +396,44 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
                   ))}
                 </tbody>
               </table>
+              {filteredHistoryItems.length > ITEMS_PER_PAGE && (
+                <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200" style={{ background: "#f8fafc" }}>
+                  <div style={{ fontSize: "13px", color: "#64748b" }}>
+                    Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, filteredHistoryItems.length)} of {filteredHistoryItems.length}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        color: currentPage === 1 ? "#cbd5e1" : "#64748b",
+                        background: "white",
+                        cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <div style={{ fontSize: "13px", color: "#0f172a", fontWeight: 600, minWidth: "80px", textAlign: "center" }}>
+                      Page {currentPage} of {totalPages}
+                    </div>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        color: currentPage === totalPages ? "#cbd5e1" : "#64748b",
+                        background: "white",
+                        cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -417,3 +470,5 @@ export function Renewals({ subscriptions, onEdit }: RenewalsProps) {
     </div>
   );
 }
+
+export const Renewals = memo(RenewalsComponent);

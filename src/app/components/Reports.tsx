@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, memo, ReactNode } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -135,7 +135,66 @@ function TeamTooltip({ active, payload, label, subscriptions }: TeamTooltipProps
   return null;
 }
 
-export function Reports({ subscriptions }: ReportsProps) {
+const TrendChart = memo(({ data }: { data: Array<{ month: string; spend: number; projected: number }> }) => (
+  <ResponsiveContainer width="100%" height={220}>
+    <LineChart data={data}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
+      <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, ""]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+      <Legend />
+      <Line type="monotone" dataKey="spend" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 3, fill: "#6366f1" }} name="Current" connectNulls />
+      <Line type="monotone" dataKey="projected" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Projected" connectNulls />
+    </LineChart>
+  </ResponsiveContainer>
+));
+
+const CycleChart = memo(({ data, colors }: { data: Array<{ name: string; value: number }>, colors: Record<string, string> }) => (
+  <ResponsiveContainer width="100%" height={180}>
+    <PieChart>
+      <Pie data={data} cx="50%" cy="50%" outerRadius={72} paddingAngle={4} dataKey="value">
+        {data.map((entry) => (
+          <Cell key={entry.name} fill={colors[entry.name as keyof typeof colors] || "#6366f1"} />
+        ))}
+      </Pie>
+      <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+    </PieChart>
+  </ResponsiveContainer>
+));
+
+const CategoryBarChart = memo(({ data, subscriptions }: { data: Array<{ name: string; monthly: number; count: number }>, subscriptions: Subscription[] }) => (
+  <ResponsiveContainer width="100%" height={220}>
+    <BarChart data={data} margin={{ bottom: 20 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+      <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" />
+      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
+      <Tooltip content={<CategoryTooltip subscriptions={subscriptions} />} />
+      <Bar dataKey="monthly" radius={[6, 6, 0, 0]}>
+        {data.map((entry) => (
+          <Cell key={entry.name} fill={categoryColors[entry.name as keyof typeof categoryColors] || "#6366f1"} />
+        ))}
+      </Bar>
+    </BarChart>
+  </ResponsiveContainer>
+));
+
+const TeamBarChart = memo(({ data, subscriptions, colors }: { data: Array<{ name: Team; monthly: number }>, subscriptions: Subscription[], colors: Record<Team, { color: string }> }) => (
+  <ResponsiveContainer width="100%" height={220}>
+    <BarChart data={data} margin={{ bottom: 8 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+      <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
+      <Tooltip content={<TeamTooltip subscriptions={subscriptions} />} />
+      <Bar dataKey="monthly" radius={[6, 6, 0, 0]} activeBar={{ opacity: 0.85 }}>
+        {data.map((entry) => (
+          <Cell key={entry.name} fill={colors[entry.name].color} />
+        ))}
+      </Bar>
+    </BarChart>
+  </ResponsiveContainer>
+));
+
+function ReportsComponent({ subscriptions }: ReportsProps) {
   const activeSubscriptions = useMemo(
     () => subscriptions.filter((sub) => sub.active && sub.renewalStatus !== "Cancelled"),
     [subscriptions]
@@ -211,7 +270,7 @@ export function Reports({ subscriptions }: ReportsProps) {
   ];
 
   return (
-    <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
+    <div className="flex flex-col gap-6 p-6 min-h-full [&_button]:cursor-pointer" style={{ background: "#f8fafc" }}>
       <div>
         <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Reports & Analytics</h1>
         <p style={{ color: "#64748b", fontSize: "14px" }}>Deep dive into your subscription spending</p>
@@ -231,32 +290,13 @@ export function Reports({ subscriptions }: ReportsProps) {
         <div className="lg:col-span-2 rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Spending Trend</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Current monthly spend and steady projection</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
-              <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, ""]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
-              <Legend />
-              <Line type="monotone" dataKey="spend" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 3, fill: "#6366f1" }} name="Current" connectNulls />
-              <Line type="monotone" dataKey="projected" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Projected" connectNulls />
-            </LineChart>
-          </ResponsiveContainer>
+          <TrendChart data={trendData} />
         </div>
 
         <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Billing Cycle Split</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Subscriptions by cycle type</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={cycleData} cx="50%" cy="50%" outerRadius={72} paddingAngle={4} dataKey="value">
-                {cycleData.map((entry) => (
-                  <Cell key={entry.name} fill={CYCLE_COLORS[entry.name as keyof typeof CYCLE_COLORS] || "#6366f1"} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
-            </PieChart>
-          </ResponsiveContainer>
+          <CycleChart data={cycleData} colors={CYCLE_COLORS} />
           <div className="flex flex-col gap-2 mt-2">
             {cycleData.map((item) => (
               <div key={item.name} className="flex items-center justify-between">
@@ -275,37 +315,13 @@ export function Reports({ subscriptions }: ReportsProps) {
         <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Spend by Category</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Monthly cost per category</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={categoryData} margin={{ bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
-              <Tooltip content={<CategoryTooltip subscriptions={activeSubscriptions} />} />
-              <Bar dataKey="monthly" radius={[6, 6, 0, 0]}>
-                {categoryData.map((entry) => (
-                  <Cell key={entry.name} fill={categoryColors[entry.name as keyof typeof categoryColors] || "#6366f1"} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <CategoryBarChart data={categoryData} subscriptions={activeSubscriptions} />
         </div>
 
         <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Spend by Team</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>Monthly spend per team</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={teamData} margin={{ bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
-              <Tooltip content={<TeamTooltip subscriptions={activeSubscriptions} />} />
-              <Bar dataKey="monthly" radius={[6, 6, 0, 0]} activeBar={{ opacity: 0.85 }}>
-                {teamData.map((entry) => (
-                  <Cell key={entry.name} fill={teamColors[entry.name as Team].color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <TeamBarChart data={teamData} subscriptions={activeSubscriptions} colors={teamColors} />
           <div className="flex flex-col gap-2 mt-3">
             {teamData.map((team) => {
               const pct = totalMonthly > 0 ? ((team.monthly / totalMonthly) * 100).toFixed(0) : "0";
@@ -332,3 +348,5 @@ export function Reports({ subscriptions }: ReportsProps) {
     </div>
   );
 }
+
+export const Reports = memo(ReportsComponent);

@@ -34,6 +34,7 @@ interface SidebarProps {
   };
   isOpen?: boolean;
   onClose?: () => void;
+  currentUserRole?: "Admin" | "Member" | "Viewer";
 }
 
 const navItems: {
@@ -78,13 +79,16 @@ export function Sidebar({
   profile,
   isOpen = false,
   onClose,
+  currentUserRole = "Admin",
 }: SidebarProps) {
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const username = profile?.username || "";
+  const username = profile?.username || profile?.email?.split("@")[0] || "";
   const email = profile?.email || "";
-  const initialLetter = username ? username[0].toUpperCase() : "?";
+  const initialLetter = username && username.length > 0 ? username[0].toUpperCase() : "?";
+  const isAdmin = currentUserRole === "Admin";
+  const visibleNavItems = navItems.filter((item) => item.id !== "settings" || isAdmin);
 
   return (
     <aside
@@ -153,7 +157,7 @@ export function Sidebar({
         >
           MENU
         </p>
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = activePage === item.id;
           return (
             <button
@@ -234,41 +238,45 @@ export function Sidebar({
             </div>
 
             <div className="px-2 py-2">
-              <button
-                onClick={() => {
-                  onNavigateToProfile?.();
-                  setShowQuickMenu(false);
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
-                style={{ color: "#e2e8f0" }}
-              >
-                <User size={16} className="text-slate-300 group-hover:text-white" />
-                <span className="text-sm font-medium">Profile</span>
-              </button>
-              <button
-                onClick={() => {
-                  onNavigateToSettings?.();
-                  onNavigate("settings");
-                  setShowQuickMenu(false);
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
-                style={{ color: "#e2e8f0" }}
-              >
-                <Settings size={16} className="text-slate-300 group-hover:text-white" />
-                <span className="text-sm font-medium">Settings</span>
-              </button>
-              <button
-                onClick={() => {
-                  onNavigateToNotifications?.();
-                  onNavigate("settings");
-                  setShowQuickMenu(false);
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
-                style={{ color: "#e2e8f0" }}
-              >
-                <BellRing size={16} className="text-slate-300 group-hover:text-white" />
-                <span className="text-sm font-medium">Notifications</span>
-              </button>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => {
+                      onNavigateToProfile?.();
+                      setShowQuickMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
+                    style={{ color: "#e2e8f0" }}
+                  >
+                    <User size={16} className="text-slate-300 group-hover:text-white" />
+                    <span className="text-sm font-medium">Profile</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      onNavigateToSettings?.();
+                      onNavigate("settings");
+                      setShowQuickMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
+                    style={{ color: "#e2e8f0" }}
+                  >
+                    <Settings size={16} className="text-slate-300 group-hover:text-white" />
+                    <span className="text-sm font-medium">Settings</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      onNavigateToNotifications?.();
+                      onNavigate("settings");
+                      setShowQuickMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group hover:bg-white/5"
+                    style={{ color: "#e2e8f0" }}
+                  >
+                    <BellRing size={16} className="text-slate-300 group-hover:text-white" />
+                    <span className="text-sm font-medium">Notifications</span>
+                  </button>
+                </>
+              )}
               <div className="my-2 h-px bg-white/10" />
               <button
                 onClick={() => {
@@ -285,43 +293,43 @@ export function Sidebar({
         )}
 
         {showLogoutConfirm && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-            <div className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}>
-                  <ShieldCheck size={18} />
+          <div className="fixed inset-0 z-[999] flex items-center justify-center px-4" style={{ background: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)", top: 0, left: 0, right: 0, bottom: 0 }}>
+            <div className="w-full max-w-sm rounded-3xl overflow-hidden bg-white" style={{ boxShadow: "0 25px 50px rgba(0,0,0,0.15)", margin: "auto" }}>
+              <div className="p-6 text-center">
+                <div className="mx-auto mb-4 w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(239,68,68,0.14)" }}>
+                  <LogOut size={28} style={{ color: "#ef4444" }} />
                 </div>
-                <div>
-                  <h3 className="text-white text-lg font-semibold">Log out</h3>
-                  <p style={{ color: "#94a3b8", fontSize: "13px" }}>Do you want to log out?</p>
+                <h2 style={{ color: "#0f172a", fontSize: "22px", fontWeight: 700, marginBottom: "8px" }}>Log out?</h2>
+                <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px", lineHeight: 1.5 }}>
+                  Are you sure you want to log out of your account?
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => setShowLogoutConfirm(false)}
+                    className="flex-1 py-3 rounded-xl transition-colors"
+                    style={{ border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontWeight: 600 }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowLogoutConfirm(false);
+                      onLogout?.();
+                    }}
+                    className="flex-1 py-3 rounded-xl text-white transition-colors"
+                    style={{ background: "#ef4444", fontWeight: 600 }}
+                  >
+                    Log out
+                  </button>
                 </div>
-              </div>
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold"
-                  style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0" }}
-                >
-                  No
-                </button>
-                <button
-                  onClick={() => {
-                    setShowLogoutConfirm(false);
-                    onLogout?.();
-                  }}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg, #ef4444, #f97316)" }}
-                >
-                  Yes
-                </button>
               </div>
             </div>
           </div>
         )}
 
         <div
-          onClick={onNavigateToProfile}
-          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={isAdmin ? onNavigateToProfile : undefined}
+          className={`flex items-center gap-3 transition-opacity${isAdmin ? " cursor-pointer hover:opacity-80" : ""}`}
         >
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-white"

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   Subscription,
   getPlatformDomain,
@@ -9,16 +9,30 @@ import {
 
 const LOGO_DEV_PUBLISHABLE_KEY = import.meta.env.VITE_LOGODEV_PUBLISHABLE_KEY as string | undefined;
 
+// Cache logo sources to avoid recalculating on every render
+const logoSourcesCache = new Map<string, string[]>();
+
 export function usePlatformLogo() {
   const [logoFallbackStage, setLogoFallbackStage] = useState<Record<string, number>>({});
 
   const getPlatformLogoSources = useCallback((platform: string, preferredDomain?: string) => {
+    const cacheKey = `${platform}:${preferredDomain || ""}`;
+
+    // Return cached sources if available
+    if (logoSourcesCache.has(cacheKey)) {
+      return logoSourcesCache.get(cacheKey)!;
+    }
+
     const domain = getPlatformDomain(platform, preferredDomain);
-    return [
+    const sources = [
       getLogoDevUrl(domain, LOGO_DEV_PUBLISHABLE_KEY),
       getDuckDuckGoLogoUrl(domain),
       getGoogleFaviconUrl(domain),
     ].filter(Boolean);
+
+    // Cache the sources for future use
+    logoSourcesCache.set(cacheKey, sources);
+    return sources;
   }, []);
 
   const handleLogoError = useCallback((platformId: string, platform: string, logoDomain?: string) => {
@@ -28,7 +42,7 @@ export function usePlatformLogo() {
       if (currentStage >= sources.length - 1) {
         return {
           ...prev,
-          [platformId]: sources.length, // Indicate exhaustion of fallbacks
+          [platformId]: sources.length,
         };
       }
       return {

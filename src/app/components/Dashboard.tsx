@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, memo } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -39,10 +39,56 @@ function addCycleDate(baseDate: Date, cycle: Subscription["cycle"]) {
 function formatOriginalAmount(subscription: Subscription) {
   return subscription.currency === "USD"
     ? `$${subscription.cost.toFixed(2)}`
-    : `Rs. ${subscription.cost.toFixed(0)}`;
+    : `₹. ${subscription.cost.toFixed(0)}`;
 }
 
-export function Dashboard({ subscriptions, loading = false, onNavigate }: DashboardProps) {
+const MonthlySpendsChart = memo(({ data }: { data: Array<{ month: string; spend: number }> }) => (
+  <ResponsiveContainer width="100%" height={200}>
+    <AreaChart data={data}>
+      <defs>
+        <linearGradient id="spendGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
+          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `₹. ${value}`} />
+      <Tooltip
+        formatter={(value: number) => [`₹. ${value.toFixed(0)}`, "Scheduled"]}
+        contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+      />
+      <Area type="monotone" dataKey="spend" stroke="#6366f1" strokeWidth={2.5} fill="url(#spendGradient)" />
+    </AreaChart>
+  </ResponsiveContainer>
+));
+
+const CategoryChart = memo(({ data }: { data: Array<{ name: string; value: number }> }) => (
+  <ResponsiveContainer width="100%" height={150}>
+    <PieChart>
+      <Pie data={data} cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={3} dataKey="value">
+        {data.map((entry) => (
+          <Cell key={entry.name} fill={categoryColors[entry.name as keyof typeof categoryColors] || "#6366f1"} />
+        ))}
+      </Pie>
+      <Tooltip formatter={(value: number) => [`₹. ${value.toFixed(0)}`, ""]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+    </PieChart>
+  </ResponsiveContainer>
+));
+
+const TopSpendsChart = memo(({ data }: { data: Array<{ name: string; cost: number }> }) => (
+  <ResponsiveContainer width="100%" height={200}>
+    <BarChart layout="vertical" data={data} margin={{ left: 0, right: 16 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+      <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `₹. ${value}`} />
+      <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={80} />
+      <Tooltip formatter={(value: number) => [`₹. ${value.toFixed(0)}`, "Monthly"]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+      <Bar dataKey="cost" fill="#6366f1" radius={[0, 6, 6, 0]} />
+    </BarChart>
+  </ResponsiveContainer>
+));
+
+function DashboardComponent({ subscriptions, loading = false, onNavigate }: DashboardProps) {
   const { getActiveLogoSrc, handleLogoError } = usePlatformLogo();
 
   const activeSubscriptions = useMemo(
@@ -156,8 +202,8 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
     },
     {
       label: "Monthly Spend (INR)",
-      value: `Rs. ${totalMonthlyINR.toFixed(0)}`,
-      sub: `Rs. ${totalAnnualINR.toFixed(0)}/year`,
+      value: `₹ ${totalMonthlyINR.toFixed(0)}`,
+      sub: `₹ ${totalAnnualINR.toFixed(0)}/year`,
       icon: <IndianRupee size={20} />,
       color: "#0ea5e9",
       bg: "rgba(14,165,233,0.12)",
@@ -181,7 +227,7 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
     {
       label: "Annual Spend",
       value: `$${totalAnnual.toFixed(2)}`,
-      sub: `Rs. ${totalAnnualINR.toFixed(0)} total`,
+      sub: `₹. ${totalAnnualINR.toFixed(0)} total`,
       icon: <TrendingUp size={20} />,
       color: "#ec4899",
       bg: "rgba(236,72,153,0.12)",
@@ -193,7 +239,7 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
       <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Overview</h1>
+            <h1 style={{ color: "#000000", fontWeight: 700, marginBottom: "4px" }}>Overview</h1>
             <p style={{ color: "#64748b", fontSize: "14px" }}>Loading your subscriptions...</p>
           </div>
           <div className="px-4 py-2 rounded-xl" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "white", fontSize: "13px", fontWeight: 600 }}>
@@ -221,11 +267,11 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
     return (
       <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
         <div>
-          <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Overview</h1>
+          <h1 style={{ color: "#000000", fontWeight: 700, marginBottom: "4px" }}>Overview</h1>
           <p style={{ color: "#64748b", fontSize: "14px" }}>No active subscriptions available yet</p>
         </div>
         <div className="rounded-2xl p-10 text-center" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-          <p style={{ color: "#0f172a", fontSize: "18px", fontWeight: 600 }}>No subscriptions found</p>
+          <p style={{ color: "#000000", fontSize: "18px", fontWeight: 700 }}>No subscriptions found</p>
           <p style={{ color: "#64748b", fontSize: "14px", marginTop: "8px" }}>
             Add subscriptions from the subscriptions page and the dashboard will populate automatically.
           </p>
@@ -238,7 +284,7 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
     <div className="flex flex-col gap-6 p-6 min-h-full" style={{ background: "#f8fafc" }}>
       <div className="flex items-center justify-between">
         <div>
-          <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Overview</h1>
+          <h1 style={{ color: "#000000", fontWeight: 700, marginBottom: "4px" }}>Overview</h1>
           <p style={{ color: "#64748b", fontSize: "14px" }}>Track all your subscriptions in one place</p>
         </div>
         <div className="px-4 py-2 rounded-xl" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "white", fontSize: "13px", fontWeight: 600 }}>
@@ -264,42 +310,16 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2 rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div className="mb-4">
-            <h3 style={{ color: "#0f172a", marginBottom: "2px" }}>Monthly Spending</h3>
+            <h3 style={{ color: "#000000", fontWeight: 700, marginBottom: "2px" }}>Monthly Spending</h3>
             <p style={{ fontSize: "12px", color: "#94a3b8" }}>Scheduled renewal charges for the next 6 months in original billing currency</p>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={monthlySpendData}>
-              <defs>
-                <linearGradient id="spendGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `Rs. ${value}`} />
-              <Tooltip
-                formatter={(value: number) => [`Rs. ${value.toFixed(0)}`, "Scheduled"]}
-                contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }}
-              />
-              <Area type="monotone" dataKey="spend" stroke="#6366f1" strokeWidth={2.5} fill="url(#spendGradient)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <MonthlySpendsChart data={monthlySpendData} />
         </div>
 
         <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <h3 style={{ color: "#0f172a", marginBottom: "2px" }}>By Category</h3>
+          <h3 style={{ color: "#000000", fontWeight: 700, marginBottom: "2px" }}>By Category</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "12px" }}>Monthly cost breakdown in INR</p>
-          <ResponsiveContainer width="100%" height={150}>
-            <PieChart>
-              <Pie data={categoryData} cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={3} dataKey="value">
-                {categoryData.map((entry) => (
-                  <Cell key={entry.name} fill={categoryColors[entry.name as keyof typeof categoryColors] || "#6366f1"} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value: number) => [`Rs. ${value.toFixed(0)}`, ""]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
-            </PieChart>
-          </ResponsiveContainer>
+          <CategoryChart data={categoryData} />
           <div className="flex flex-col gap-1.5 mt-2">
             {categoryData.slice(0, 4).map((item) => (
               <div key={item.name} className="flex items-center justify-between">
@@ -307,7 +327,7 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: categoryColors[item.name as keyof typeof categoryColors] || "#6366f1" }} />
                   <span style={{ fontSize: "11px", color: "#64748b" }}>{item.name}</span>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: 600, color: "#0f172a" }}>Rs. {item.value.toFixed(0)}</span>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "#0f172a" }}>₹. {item.value.toFixed(0)}</span>
               </div>
             ))}
           </div>
@@ -317,10 +337,10 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2 rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div className="flex items-center justify-between mb-4">
-            <h3 style={{ color: "#0f172a" }}>Upcoming Renewals</h3>
+            <h3 style={{ color: "#000000", fontWeight: 700 }}>Upcoming Renewals</h3>
             <button
               onClick={() => onNavigate("renewals")}
-              className="px-3 py-1 rounded-lg transition-colors"
+              className="px-3 py-1 rounded-lg transition-colors cursor-pointer"
               style={{ fontSize: "12px", color: "#6366f1", fontWeight: 600, background: "rgba(99,102,241,0.08)" }}
             >
               View all
@@ -384,19 +404,13 @@ export function Dashboard({ subscriptions, loading = false, onNavigate }: Dashbo
         </div>
 
         <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <h3 style={{ color: "#0f172a", marginBottom: "2px" }}>Top Spends</h3>
+          <h3 style={{ color: "#000000", fontWeight: 700, marginBottom: "2px" }}>Top Spends</h3>
           <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "12px" }}>Highest monthly cost in INR</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart layout="vertical" data={topSpends} margin={{ left: 0, right: 16 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `Rs. ${value}`} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={80} />
-              <Tooltip formatter={(value: number) => [`Rs. ${value.toFixed(0)}`, "Monthly"]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
-              <Bar dataKey="cost" fill="#6366f1" radius={[0, 6, 6, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <TopSpendsChart data={topSpends} />
         </div>
       </div>
     </div>
   );
 }
+
+export const Dashboard = memo(DashboardComponent);

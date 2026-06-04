@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Search, Loader2 } from "lucide-react";
 import { Subscription, BillingCycle, PaymentMode, Category, Currency, Team, getPlatformIdentity } from "../data/subscriptions";
 
@@ -18,6 +18,10 @@ interface BrandSearchResult {
   name: string;
   domain: string;
 }
+
+// Cache for brand search results to deduplicate requests
+const brandSearchCache = new Map<string, BrandSearchResult[]>();
+let pendingRequest: { query: string; controller: AbortController } | null = null;
 
 export function AddEditModal({ subscription, onSave, onClose, categories, teams }: AddEditModalProps) {
   const [form, setForm] = useState({
@@ -82,9 +86,28 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
       return;
     }
 
+    // Check cache first (deduplicate identical requests)
+    if (brandSearchCache.has(query)) {
+      setBrandSuggestions(brandSearchCache.get(query)!);
+      setBrandSearchLoading(false);
+      return;
+    }
+
+    // Cancel previous pending request if different query
+    if (pendingRequest && pendingRequest.query !== query) {
+      pendingRequest.controller.abort();
+      pendingRequest = null;
+    }
+
+    // Don't create duplicate request if one is already pending for this query
+    if (pendingRequest && pendingRequest.query === query) {
+      return;
+    }
+
     const controller = new AbortController();
     const timeoutId = window.setTimeout(async () => {
       setBrandSearchLoading(true);
+      pendingRequest = { query, controller };
 
       try {
         const response = await fetch(`/api/logo-search?q=${encodeURIComponent(query)}`, {
@@ -96,7 +119,14 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
         }
 
         const data = (await response.json()) as BrandSearchResult[];
-        setBrandSuggestions(Array.isArray(data) ? data : []);
+        const results = Array.isArray(data) ? data : [];
+
+        // Cache the results for future identical queries
+        brandSearchCache.set(query, results);
+
+        if (!controller.signal.aborted) {
+          setBrandSuggestions(results);
+        }
       } catch (error) {
         if (!controller.signal.aborted) {
           console.warn("Failed to fetch brand suggestions:", error);
@@ -106,6 +136,7 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
         if (!controller.signal.aborted) {
           setBrandSearchLoading(false);
         }
+        pendingRequest = null;
       }
     }, 250);
 

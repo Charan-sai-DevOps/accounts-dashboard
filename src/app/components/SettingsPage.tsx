@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, memo } from "react";
 import {
   Users, Bell, DollarSign, Shield,
   Plus, Trash2, X, Check, UserCheck,
   Clock, Mail, Smartphone, ChevronRight,
   Search, Edit2, AlertTriangle, Layers,
+  Eye, EyeOff,
 } from "lucide-react";
 import { Subscription, getDaysUntilExpiry, Category, Team, categoryColors, getTeamIdentity } from "../data/subscriptions";
 
@@ -36,6 +37,7 @@ interface AppUser {
   name: string;
   email: string;
   role: "Admin" | "Member" | "Viewer";
+  password: string;
   lastLogin: string;
   avatar: string;
 }
@@ -47,7 +49,6 @@ interface CustomNotification {
   reminder: string;
 }
 
-const initialUsers: AppUser[] = [];
 
 const REMINDER_OPTIONS = [
   "7 days before",
@@ -99,7 +100,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
-export function SettingsPage({
+function SettingsPageComponent({
   subscriptions,
   categories,
   onCreateCategory,
@@ -120,13 +121,52 @@ export function SettingsPage({
     }
   };
 
-  const [users, setUsers] = useState<AppUser[]>(initialUsers);
+  const [users, setUsers] = useState<AppUser[]>(() => {
+    try {
+      const stored = localStorage.getItem("appUsers");
+      if (stored) return JSON.parse(stored) as AppUser[];
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("appUsers", JSON.stringify(users));
+    } catch {}
+  }, [users]);
+
+  useEffect(() => {
+    const loadUsersFromAPI = async () => {
+      try {
+        const response = await fetch("/api/settings");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (Array.isArray(data.appUsers) && data.appUsers.length > 0) {
+          setUsers(data.appUsers);
+          localStorage.setItem("appUsers", JSON.stringify(data.appUsers));
+        }
+      } catch {}
+    };
+    void loadUsersFromAPI();
+  }, []);
+
+  const saveUsersToAPI = async (usersToSave: AppUser[]) => {
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appUsers: usersToSave }),
+      });
+    } catch {}
+  };
+
   const [userSearch, setUserSearch] = useState("");
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
   const [editUserId, setEditUserId] = useState<string | null>(null);
-  const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"] });
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"], password: "" });
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
 
@@ -165,6 +205,31 @@ export function SettingsPage({
     monthlySummary: true,
     newSub: false,
   });
+
+  useEffect(() => {
+    const loadNotificationSettings = async () => {
+      try {
+        const response = await fetch("/api/settings");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.notificationSettings) {
+          setBuiltInNotifs(data.notificationSettings);
+        }
+      } catch {}
+    };
+    void loadNotificationSettings();
+  }, []);
+
+  const saveNotificationSettings = async (settings: typeof builtInNotifs) => {
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationSettings: settings }),
+      });
+    } catch {}
+  };
+
   const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([]);
   const [showAddNotif, setShowAddNotif] = useState(false);
   const [notifForm, setNotifForm] = useState({ email: "", platform: "", reminder: REMINDER_OPTIONS[0] });
@@ -174,6 +239,11 @@ export function SettingsPage({
   const [primaryCurrency, setPrimaryCurrency] = useState<"INR" | "USD">("INR");
 
   const [emailAuth, setEmailAuth] = useState(false);
+  const [emailAuthLoading, setEmailAuthLoading] = useState(false);
+  const [emailAuthMessage, setEmailAuthMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [emailVerificationCode, setEmailVerificationCode] = useState("");
+  const [emailUsedForVerification, setEmailUsedForVerification] = useState<string>("");
   const [googleAuth, setGoogleAuth] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
@@ -181,36 +251,52 @@ export function SettingsPage({
 
   const handleCreateUser = () => {
     if (!newUser.name || !newUser.email) return;
+    if (!editUserId && newUser.role !== "Admin" && !newUser.password) return;
+
+    let updatedUsers: AppUser[];
 
     if (editUserId) {
-      setUsers((prev) => prev.map((user) =>
+      updatedUsers = users.map((user) =>
         user.id === editUserId
-          ? { ...user, name: newUser.name, email: newUser.email, role: newUser.role }
+          ? {
+              ...user,
+              name: newUser.name,
+              email: newUser.email,
+              role: newUser.role,
+              ...(newUser.password ? { password: newUser.password } : {}),
+            }
           : user
-      ));
+      );
     } else {
       const id = String(Date.now());
-      setUsers((prev) => [
-        ...prev,
+      updatedUsers = [
+        ...users,
         {
           id,
           name: newUser.name,
           email: newUser.email,
           role: newUser.role,
+          password: newUser.password,
           lastLogin: "Never",
           avatar: newUser.name[0].toUpperCase(),
         },
-      ]);
+      ];
     }
 
-    setNewUser({ name: "", email: "", role: "Member" });
+    setUsers(updatedUsers);
+    try {
+      localStorage.setItem("appUsers", JSON.stringify(updatedUsers));
+    } catch {}
+    void saveUsersToAPI(updatedUsers);
+
+    setNewUser({ name: "", email: "", role: "Member", password: "" });
     setEditUserId(null);
     setShowCreateUser(false);
   };
 
   const startEditUser = (user: AppUser) => {
     setEditUserId(user.id);
-    setNewUser({ name: user.name, email: user.email, role: user.role });
+    setNewUser({ name: user.name, email: user.email, role: user.role, password: "" });
     setShowCreateUser(true);
   };
 
@@ -221,7 +307,12 @@ export function SettingsPage({
 
   const confirmDeleteUser = () => {
     if (!pendingDeleteId) return;
-    setUsers((prev) => prev.filter((user) => user.id !== pendingDeleteId));
+    const updatedUsers = users.filter((user) => user.id !== pendingDeleteId);
+    setUsers(updatedUsers);
+    try {
+      localStorage.setItem("appUsers", JSON.stringify(updatedUsers));
+    } catch {}
+    void saveUsersToAPI(updatedUsers);
     setPendingDeleteId(null);
     setDeleteTargetName(null);
   };
@@ -258,28 +349,31 @@ export function SettingsPage({
 
   const collectDueReminders = () => {
     const messages: string[] = [];
+    const adminEmail = profile.email || "admin@webomindapps.com";
 
     subscriptions.forEach((sub) => {
       const days = getDaysUntilExpiry(sub.expiryDate);
       if (days < 0) return;
 
+      const platformEmail = getPlatformEmail(sub);
+
       if (days === 7 && builtInNotifs.sevenDay) {
-        messages.push(`Send 7-day reminder for ${sub.platform} to ${getPlatformEmail(sub)} (expiry ${sub.expiryDate})`);
+        messages.push(`📧 7-day reminder for ${sub.platform}\n   Recipient: ${platformEmail}\n   Expiry: ${sub.expiryDate}`);
       }
       if (days === 3 && builtInNotifs.threeDayBefore) {
-        messages.push(`Send 3-day reminder for ${sub.platform} to ${getPlatformEmail(sub)} (expiry ${sub.expiryDate})`);
+        messages.push(`📧 3-day reminder for ${sub.platform}\n   Recipient: ${platformEmail}\n   Expiry: ${sub.expiryDate}`);
       }
       if (days === 0 && builtInNotifs.dayOf) {
-        messages.push(`Send day-of renewal reminder for ${sub.platform} to ${getPlatformEmail(sub)} (expiry ${sub.expiryDate})`);
+        messages.push(`📧 Day-of renewal reminder for ${sub.platform}\n   Recipient: ${platformEmail}\n   Expiry: ${sub.expiryDate}`);
       }
     });
 
     if (builtInNotifs.monthlySummary) {
-      messages.push(`Monthly spend summary mode is enabled for all active subscriptions.`);
+      messages.push(` Monthly spend summary\n   Recipient: ${adminEmail}\n   Contains: Cost breakdown for all active subscriptions`);
     }
 
     if (builtInNotifs.newSub) {
-      messages.push(`New subscription alerts are enabled for the account.`);
+      messages.push(` New subscription alerts\n   Recipient: ${adminEmail}\n   Triggered when new subscription is added`);
     }
 
     customNotifs.forEach((notif) => {
@@ -287,7 +381,7 @@ export function SettingsPage({
       subscriptions.filter((sub) => sub.platform === notif.platform).forEach((sub) => {
         const days = getDaysUntilExpiry(sub.expiryDate);
         if (days === requiredDays) {
-          messages.push(`Custom reminder for ${sub.platform} to ${notif.email} on ${notif.reminder} (expiry ${sub.expiryDate})`);
+          messages.push(`in Custom reminder for ${sub.platform}\n   Recipient: ${notif.email}\n   Timing: ${notif.reminder}\n   Expiry: ${sub.expiryDate}`);
         }
       });
     });
@@ -386,6 +480,123 @@ export function SettingsPage({
     }
   };
 
+  const handleEmailAuthToggle = async (enabled: boolean) => {
+    if (!enabled) {
+      // Disable email auth
+      setEmailAuthLoading(true);
+      setEmailAuthMessage(null);
+      try {
+        const response = await fetch("/api/2fa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "disable" }),
+        });
+        if (!response.ok) throw new Error("Failed to disable email authentication");
+        setEmailAuth(false);
+        setShowEmailVerification(false);
+        setEmailVerificationCode("");
+        setEmailUsedForVerification("");
+        setEmailAuthMessage({ type: "success", text: "Email authentication disabled." });
+      } catch (error) {
+        setEmailAuthMessage({
+          type: "error",
+          text: error instanceof Error ? error.message : "Failed to disable email authentication.",
+        });
+      } finally {
+        setEmailAuthLoading(false);
+      }
+      return;
+    }
+
+    // Enable email auth - send verification code
+    setEmailAuthLoading(true);
+    setEmailAuthMessage(null);
+    try {
+      const emailToUse = profile.email.trim().toLowerCase();
+
+      if (!emailToUse) {
+        throw new Error("Email address is not set in your profile.");
+      }
+
+      const response = await fetch("/api/2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send", email: emailToUse }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || "Failed to send verification code");
+      }
+
+      setShowEmailVerification(true);
+      setEmailVerificationCode("");
+      setEmailUsedForVerification(emailToUse);
+      setEmailAuthMessage({
+        type: "info",
+        text: `Verification code sent to ${emailToUse}. Please check your email and enter the code below.`,
+      });
+    } catch (error) {
+      setEmailAuthMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to send verification code.",
+      });
+      setShowEmailVerification(false);
+    } finally {
+      setEmailAuthLoading(false);
+    }
+  };
+
+  const handleEmailVerificationSubmit = async () => {
+    if (!emailVerificationCode || emailVerificationCode.length < 6) {
+      setEmailAuthMessage({
+        type: "error",
+        text: "Please enter a valid 6-digit code.",
+      });
+      return;
+    }
+
+    if (!emailUsedForVerification) {
+      setEmailAuthMessage({
+        type: "error",
+        text: "Email for verification not set. Please try again.",
+      });
+      return;
+    }
+
+    setEmailAuthLoading(true);
+    try {
+      const response = await fetch("/api/2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify",
+          email: emailUsedForVerification,
+          code: emailVerificationCode,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || "Invalid verification code. Please try again.");
+      }
+
+      setEmailAuth(true);
+      setShowEmailVerification(false);
+      setEmailVerificationCode("");
+      setEmailUsedForVerification("");
+      setEmailAuthMessage({ type: "success", text: "✅ Email authentication enabled successfully!" });
+      setTimeout(() => setEmailAuthMessage(null), 3000);
+    } catch (error) {
+      setEmailAuthMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to verify code. Please try again.",
+      });
+    } finally {
+      setEmailAuthLoading(false);
+    }
+  };
+
   const filteredUsers = users.filter(
     (u) => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
@@ -408,7 +619,7 @@ export function SettingsPage({
   const platformOptions = Array.from(new Set(subscriptions.map((s) => s.platform)));
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-full" style={{ background: "#f8fafc" }}>
+    <div className="flex flex-col lg:flex-row min-h-full [&_button]:cursor-pointer" style={{ background: "#f8fafc" }}>
 
       {/* Mobile: horizontal scrollable tab strip */}
       <div className="lg:hidden bg-white border-b border-slate-200 sticky top-0 z-10">
@@ -954,7 +1165,11 @@ export function SettingsPage({
                       <p style={{ fontSize: "14px", fontWeight: 500, color: "#0f172a" }}>{item.label}</p>
                       <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>{item.sub}</p>
                     </div>
-                    <Toggle value={builtInNotifs[item.key]} onChange={(v) => setBuiltInNotifs((p) => ({ ...p, [item.key]: v }))} />
+                    <Toggle value={builtInNotifs[item.key]} onChange={(v) => {
+                      const updated = { ...builtInNotifs, [item.key]: v };
+                      setBuiltInNotifs(updated);
+                      void saveNotificationSettings(updated);
+                    }} />
                   </div>
                 ))}
               </div>
@@ -1086,21 +1301,88 @@ export function SettingsPage({
                   <div>
                     <p style={{ fontSize: "15px", fontWeight: 600, color: "#0f172a" }}>Email Authentication</p>
                     <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px", maxWidth: "320px" }}>
-                      A one-time code will be sent to your registered email address each time you log in.
+                      A one-time code will be sent to {profile.email} each time you log in.
                     </p>
                     {emailAuth && (
                       <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg self-start" style={{ background: "rgba(16,185,129,0.1)", display: "inline-flex" }}>
                         <Check size={12} style={{ color: "#10b981" }} />
-                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled Charan@webomindapps.com</span>
+                        <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>Enabled {profile.email}</span>
                       </div>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="flex items-center gap-3 flex-shrink-0" style={{ opacity: emailAuthLoading ? 0.5 : 1, pointerEvents: emailAuthLoading ? "none" : "auto" }}>
                   <span style={{ fontSize: "12px", color: emailAuth ? "#10b981" : "#94a3b8", fontWeight: 600 }}>{emailAuth ? "ON" : "OFF"}</span>
-                  <Toggle value={emailAuth} onChange={setEmailAuth} />
+                  <Toggle value={emailAuth} onChange={(v) => void handleEmailAuthToggle(v)} />
                 </div>
               </div>
+
+              {emailAuthMessage && (
+                <div
+                  className="mt-4 rounded-2xl px-4 py-3 text-sm"
+                  style={{
+                    background:
+                      emailAuthMessage.type === "success"
+                        ? "rgba(16,185,129,0.08)"
+                        : emailAuthMessage.type === "error"
+                        ? "rgba(239,68,68,0.08)"
+                        : "rgba(59,130,246,0.08)",
+                    color:
+                      emailAuthMessage.type === "success"
+                        ? "#10b981"
+                        : emailAuthMessage.type === "error"
+                        ? "#ef4444"
+                        : "#0ea5e9",
+                    border: `1px solid ${
+                      emailAuthMessage.type === "success"
+                        ? "rgba(16,185,129,0.18)"
+                        : emailAuthMessage.type === "error"
+                        ? "rgba(239,68,68,0.18)"
+                        : "rgba(59,130,246,0.18)"
+                    }`,
+                  }}
+                >
+                  {emailAuthMessage.text}
+                </div>
+              )}
+
+              {showEmailVerification && !emailAuth && (
+                <div className="mt-5 pt-5" style={{ borderTop: "1px solid #f1f5f9" }}>
+                  <p style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a", marginBottom: "12px" }}>Verify Your Email</p>
+                  <div className="flex flex-col gap-3">
+                    <p style={{ fontSize: "12px", color: "#64748b" }}>
+                      Enter the 6-digit verification code sent to <strong>{emailUsedForVerification || profile.email}</strong>
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        value={emailVerificationCode}
+                        onChange={(e) => setEmailVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="000000"
+                        className="flex-1 px-3 py-2.5 rounded-xl outline-none"
+                        style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", letterSpacing: "0.2em", textAlign: "center" }}
+                        onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                        onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                        maxLength={6}
+                        autoComplete="off"
+                      />
+                      <button
+                        onClick={() => void handleEmailVerificationSubmit()}
+                        disabled={emailAuthLoading || emailVerificationCode.length < 6}
+                        className="px-4 py-2.5 rounded-xl text-white transition-all"
+                        style={{
+                          background: emailVerificationCode.length === 6 && !emailAuthLoading ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "#cbd5e1",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          cursor: emailVerificationCode.length === 6 && !emailAuthLoading ? "pointer" : "not-allowed",
+                          opacity: emailAuthLoading ? 0.7 : 1,
+                        }}
+                      >
+                        {emailAuthLoading ? "Verifying..." : "Verify"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl p-6" style={{ background: "white", border: "1px solid #e2e8f0" }}>
@@ -1200,8 +1482,17 @@ export function SettingsPage({
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
           <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
-              <h2 style={{ color: "#0f172a" }}>Create New User</h2>
-              <button onClick={() => setShowCreateUser(false)} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9", color: "#64748b" }}>
+              <h2 style={{ color: "#0f172a" }}>{editUserId ? "Edit User" : "Create New User"}</h2>
+              <button
+                onClick={() => {
+                  setShowCreateUser(false);
+                  setEditUserId(null);
+                  setNewUser({ name: "", email: "", role: "Member", password: "" });
+                  setShowNewUserPassword(false);
+                }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "#f1f5f9", color: "#64748b" }}
+              >
                 <X size={16} />
               </button>
             </div>
@@ -1229,7 +1520,7 @@ export function SettingsPage({
                   {(["Admin", "Member", "Viewer"] as AppUser["role"][]).map((role) => (
                     <button
                       key={role}
-                      onClick={() => setNewUser((p) => ({ ...p, role }))}
+                      onClick={() => setNewUser((p) => ({ ...p, role, ...(role === "Admin" ? { password: "" } : {}) }))}
                       className="flex-1 py-2 rounded-xl transition-all"
                       style={{
                         border: `1.5px solid ${newUser.role === role ? "#6366f1" : "#e2e8f0"}`,
@@ -1244,11 +1535,53 @@ export function SettingsPage({
                   ))}
                 </div>
               </div>
+              {newUser.role !== "Admin" && (
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
+                    Password {editUserId ? "(leave blank to keep current)" : "*"}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewUserPassword ? "text" : "password"}
+                      value={newUser.password}
+                      onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
+                      placeholder={editUserId ? "Leave blank to keep current" : "Set a login password"}
+                      autoComplete="new-password"
+                      className="w-full px-3 py-2.5 pr-10 rounded-xl outline-none"
+                      style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                      onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                      onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewUserPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      style={{ color: "#94a3b8" }}
+                      tabIndex={-1}
+                    >
+                      {showNewUserPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex gap-3 mt-2">
-                <button onClick={() => setShowCreateUser(false)} className="flex-1 py-2.5 rounded-xl" style={{ border: "1.5px solid #e2e8f0", fontSize: "14px", color: "#64748b", background: "white" }}>
+                <button
+                  onClick={() => {
+                    setShowCreateUser(false);
+                    setEditUserId(null);
+                    setNewUser({ name: "", email: "", role: "Member", password: "" });
+                    setShowNewUserPassword(false);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl"
+                  style={{ border: "1.5px solid #e2e8f0", fontSize: "14px", color: "#64748b", background: "white" }}
+                >
                   Cancel
                 </button>
-                <button onClick={handleCreateUser} className="flex-1 py-2.5 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}>
+                <button
+                  onClick={() => { handleCreateUser(); setShowNewUserPassword(false); }}
+                  className="flex-1 py-2.5 rounded-xl text-white"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}
+                >
                   {editUserId ? "Save Changes" : "Create User"}
                 </button>
               </div>
@@ -1471,3 +1804,5 @@ export function SettingsPage({
     </div>
   );
 }
+
+export const SettingsPage = memo(SettingsPageComponent);

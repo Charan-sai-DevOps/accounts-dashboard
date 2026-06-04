@@ -41,16 +41,54 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
-    if (email !== auth.email.trim().toLowerCase() || hashPassword(password) !== auth.passwordHash) {
-      return res.status(401).json({ message: "Invalid email or password." });
+    // Admin check
+    if (email === auth.email.trim().toLowerCase() && hashPassword(password) === auth.passwordHash) {
+      // Check if admin has 2FA enabled
+      const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
+      const twoFactorAuth = (settingsDoc.data() as any)?.twoFactorAuth;
+      const has2FA = twoFactorAuth?.email?.enabled === true;
+
+      return res.status(200).json({
+        ok: true,
+        role: "Admin",
+        user: { email: auth.email },
+        requires2FA: has2FA,
+      });
     }
 
-    return res.status(200).json({
-      ok: true,
-      user: {
-        email: auth.email,
-      },
-    });
+    // Member / Viewer check — look up appUsers stored in Firestore
+    try {
+      const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
+      if (settingsDoc.exists) {
+        const appUsers: any[] = (settingsDoc.data() as any)?.appUsers ?? [];
+        const matched = appUsers.find(
+          (u: any) =>
+            typeof u.email === "string" &&
+            u.email.trim().toLowerCase() === email &&
+            typeof u.passwordHash === "string" &&
+            u.passwordHash === hashPassword(password) &&
+            (u.role === "Member" || u.role === "Viewer")
+        );
+        if (matched) {
+          // Check if user has 2FA enabled
+          const twoFactorAuth = (settingsDoc.data() as any)?.twoFactorAuth;
+          const has2FA = twoFactorAuth?.email?.enabled === true;
+
+          return res.status(200).json({
+            ok: true,
+            role: matched.role,
+            user: {
+              name: typeof matched.name === "string" ? matched.name : "",
+              email: typeof matched.email === "string" ? matched.email : "",
+              role: matched.role,
+            },
+            requires2FA: has2FA,
+          });
+        }
+      }
+    } catch {}
+
+    return res.status(401).json({ message: "Invalid email or password." });
   }
 
   if (req.method === "PUT") {
