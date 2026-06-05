@@ -16,7 +16,15 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // Try Clearbit API first
+    // Try Logo.dev first if key is configured
+    if (process.env.LOGODEV_SECRET_KEY) {
+      const logoDevResults = await searchLogoDev(query);
+      if (logoDevResults.length > 0) {
+        return res.status(200).json(logoDevResults);
+      }
+    }
+
+    // Fallback to Clearbit API first
     const clearbitResults = await searchClearbit(query);
     if (clearbitResults.length > 0) {
       return res.status(200).json(clearbitResults);
@@ -28,6 +36,39 @@ export default async function handler(req: any, res: any) {
   } catch (error) {
     console.error("Brand search failed:", error);
     return res.status(200).json([]);
+  }
+}
+
+async function searchLogoDev(query: string): Promise<BrandSearchResult[]> {
+  const secretKey = process.env.LOGODEV_SECRET_KEY;
+  if (!secretKey) return [];
+
+  try {
+    const response = await fetch(`https://api.logo.dev/search?q=${encodeURIComponent(query)}`, {
+      headers: {
+        "Authorization": `Bearer ${secretKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data: any = await response.json();
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data
+      .slice(0, 5)
+      .map((company: any) => ({
+        name: company.name || "",
+        domain: company.domain || "",
+      }))
+      .filter((result: BrandSearchResult) => result.name && result.domain);
+  } catch (error) {
+    console.warn("Logo.dev search failed:", error);
+    return [];
   }
 }
 

@@ -39,7 +39,7 @@ function addCycleDate(baseDate: Date, cycle: Subscription["cycle"]) {
 function formatOriginalAmount(subscription: Subscription) {
   return subscription.currency === "USD"
     ? `$${subscription.cost.toFixed(2)}`
-    : `₹. ${subscription.cost.toFixed(0)}`;
+    : `₹  ${subscription.cost.toFixed(0)}`;
 }
 
 const MonthlySpendsChart = memo(({ data }: { data: Array<{ month: string; spend: number }> }) => (
@@ -53,9 +53,9 @@ const MonthlySpendsChart = memo(({ data }: { data: Array<{ month: string; spend:
       </defs>
       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
       <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `₹. ${value}`} />
+      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `₹  ${value}`} />
       <Tooltip
-        formatter={(value: number) => [`₹. ${value.toFixed(0)}`, "Scheduled"]}
+        formatter={(value: number) => [`₹  ${value.toFixed(0)}`, "Scheduled"]}
         contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }}
       />
       <Area type="monotone" dataKey="spend" stroke="#6366f1" strokeWidth={2.5} fill="url(#spendGradient)" />
@@ -71,7 +71,7 @@ const CategoryChart = memo(({ data }: { data: Array<{ name: string; value: numbe
           <Cell key={entry.name} fill={categoryColors[entry.name as keyof typeof categoryColors] || "#6366f1"} />
         ))}
       </Pie>
-      <Tooltip formatter={(value: number) => [`₹. ${value.toFixed(0)}`, ""]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+      <Tooltip formatter={(value: number) => [`₹  ${value.toFixed(0)}`, ""]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
     </PieChart>
   </ResponsiveContainer>
 ));
@@ -80,9 +80,9 @@ const TopSpendsChart = memo(({ data }: { data: Array<{ name: string; cost: numbe
   <ResponsiveContainer width="100%" height={200}>
     <BarChart layout="vertical" data={data} margin={{ left: 0, right: 16 }}>
       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-      <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `₹. ${value}`} />
+      <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(value) => `₹  ${value}`} />
       <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={80} />
-      <Tooltip formatter={(value: number) => [`₹. ${value.toFixed(0)}`, "Monthly"]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+      <Tooltip formatter={(value: number) => [`₹  ${value.toFixed(0)}`, "Monthly"]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
       <Bar dataKey="cost" fill="#6366f1" radius={[0, 6, 6, 0]} />
     </BarChart>
   </ResponsiveContainer>
@@ -227,7 +227,7 @@ function DashboardComponent({ subscriptions, loading = false, onNavigate }: Dash
     {
       label: "Annual Spend",
       value: `$${totalAnnual.toFixed(2)}`,
-      sub: `₹. ${totalAnnualINR.toFixed(0)} total`,
+      sub: `₹  ${totalAnnualINR.toFixed(0)} total`,
       icon: <TrendingUp size={20} />,
       color: "#ec4899",
       bg: "rgba(236,72,153,0.12)",
@@ -327,7 +327,7 @@ function DashboardComponent({ subscriptions, loading = false, onNavigate }: Dash
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: categoryColors[item.name as keyof typeof categoryColors] || "#6366f1" }} />
                   <span style={{ fontSize: "11px", color: "#64748b" }}>{item.name}</span>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: 600, color: "#0f172a" }}>₹. {item.value.toFixed(0)}</span>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "#0f172a" }}>₹  {item.value.toFixed(0)}</span>
               </div>
             ))}
           </div>

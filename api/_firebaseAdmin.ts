@@ -18,4 +18,11 @@ if (!admin.apps.length) {
   });
 }
 
-export const firestore = admin.firestore();
+const db = admin.firestore();
+try {
+  db.settings({ preferRest: true });
+} catch (error) {
+  console.warn("Failed to apply Firestore REST settings:", error);
+}
+
+export const firestore = db;

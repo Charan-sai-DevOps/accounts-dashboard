@@ -7,6 +7,8 @@ import { Reports } from "./components/Reports";
 import { Renewals } from "./components/Renewals";
 import { SettingsPage } from "./components/SettingsPage";
 import { LoginPage } from "./components/LoginPage";
+import { Toaster } from "./components/ui/sonner";
+import { toast } from "sonner";
 import { Subscription, getDaysUntilExpiry, getNextExpiryDate, DEFAULT_CATEGORIES, DEFAULT_TEAMS, Category, Team, sanitizeSubscriptions } from "./data/subscriptions";
 // import { db } from "../firebase";
 // import { collection, doc, onSnapshot, addDoc, setDoc, deleteDoc } from "firebase/firestore";
@@ -203,6 +205,12 @@ export default function App() {
   }, []);
 
   const handleDelete = useCallback(async (id: string) => {
+    let deletedSubscription: Subscription | undefined;
+    setSubscriptions((prev) => {
+      deletedSubscription = prev.find((s) => s.id === id);
+      return prev.filter((s) => s.id !== id);
+    });
+
     try {
       const response = await fetch(`/api/subscriptions/${id}`, {
         method: "DELETE",
@@ -210,11 +218,17 @@ export default function App() {
       if (!response.ok && response.status !== 204) {
         throw new Error(`Failed to delete subscription: ${response.status}`);
       }
-      setSubscriptions((prev) => prev.filter((s) => s.id !== id));
       setError(null);
     } catch (err) {
       console.error("Failed to delete subscription:", err);
       setError(err instanceof Error ? err.message : String(err));
+      if (deletedSubscription) {
+        setSubscriptions((prev) => {
+          if (prev.some((s) => s.id === id)) return prev;
+          return [...prev, deletedSubscription!];
+        });
+      }
+      toast.error("Failed to delete subscription. Please try again.");
     }
   }, []);
 
@@ -394,6 +408,7 @@ export default function App() {
           />
         )}
       </main>
+      <Toaster />
     </div>
   );
 }
