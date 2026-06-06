@@ -18,10 +18,13 @@ type UserRole = "Admin" | "Member" | "Viewer";
 const AUTH_STORAGE_KEY = "subscription-dashboard-auth";
 const USER_ROLE_KEY = "subscription-dashboard-user-role";
 
-// Settings cache with 5-minute TTL to prevent redundant Firestore reads
+// Settings cache with 5-minute TTL to prevent redundant Firestore reads on same page within a session
+// Note: this is in-memory only — never used to skip the initial load on page refresh
 let settingsCache: any = null;
 let settingsCacheTime = 0;
-const SETTINGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const SETTINGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes — within-session dedup only
+
+const PROFILE_STORAGE_KEY = "subscription-dashboard-profile";
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
@@ -41,20 +44,25 @@ export default function App() {
     } catch {}
     return "Admin";
   });
-  const [profile, setProfile] = useState({
-    username: "",
-    companyName: "",
-    role: "",
-    email: ""
+  const [profile, setProfile] = useState(() => {
+    // Seed from localStorage so Sidebar shows name immediately on refresh
+    try {
+      const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.username) return parsed;
+      }
+    } catch {}
+    return { username: "", companyName: "", role: "", email: "" };
   });
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [categories, setCategories] = useState<Category[]>(() => {
+    // Seed from localStorage for instant display — will be overwritten with Firestore data on load
     try {
       const stored = localStorage.getItem("customCategories");
       if (stored) {
         const parsed = JSON.parse(stored) as Category[];
-        const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...parsed]));
-        return merged as Category[];
+        return Array.from(new Set([...DEFAULT_CATEGORIES, ...parsed])) as Category[];
       }
     } catch (error) {
       console.warn("Failed to load saved categories:", error);
@@ -62,6 +70,7 @@ export default function App() {
     return DEFAULT_CATEGORIES;
   });
   const [teams, setTeams] = useState<Team[]>(() => {
+    // Seed from localStorage for instant display — will be overwritten with Firestore data on load
     try {
       const stored = localStorage.getItem("customTeams");
       if (stored) {
@@ -87,7 +96,20 @@ export default function App() {
 
     const loadData = async () => {
       try {
-        const subsResponse = await fetch("/api/subscriptions", { signal: controller.signal });
+        // Always fetch fresh from Firestore on load — never skip based on cache
+        // In-memory cache is only used to deduplicate calls within the same session
+        const requests: Promise<Response>[] = [
+          fetch("/api/subscriptions", { signal: controller.signal }),
+        ];
+
+        if (currentUserRole === "Admin") {
+          // Only skip if cache is fresh within this session (not across page refreshes)
+          if (!(settingsCache && Date.now() - settingsCacheTime < SETTINGS_CACHE_TTL)) {
+            requests.push(fetch("/api/settings", { signal: controller.signal }));
+          }
+        }
+
+        const [subsResponse, settingsResponse] = await Promise.all(requests);
 
         if (!subsResponse.ok) {
           throw new Error(`Failed to fetch subscriptions: ${subsResponse.status}`);
@@ -95,6 +117,35 @@ export default function App() {
         const data = sanitizeSubscriptions(await subsResponse.json());
         setSubscriptions(data);
         setError(null);
+
+        if (settingsResponse && settingsResponse.ok) {
+          const settingsData = await settingsResponse.json();
+          settingsCache = settingsData;
+          settingsCacheTime = Date.now();
+
+          if (settingsData?.profile) {
+            setProfile(settingsData.profile);
+            try {
+              localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(settingsData.profile));
+            } catch {}
+          }
+
+          // Sync categories from Firestore — overwrite localStorage seed with live data
+          if (Array.isArray(settingsData?.customCategories)) {
+            const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...settingsData.customCategories])) as Category[];
+            setCategories(merged);
+            try { localStorage.setItem("customCategories", JSON.stringify(settingsData.customCategories)); } catch {}
+          }
+
+          // Sync teams from Firestore — overwrite localStorage seed with live data
+          if (Array.isArray(settingsData?.customTeams)) {
+            const merged = Array.from(new Set([...DEFAULT_TEAMS, ...settingsData.customTeams]));
+            setTeams(merged);
+            try { localStorage.setItem("customTeams", JSON.stringify(settingsData.customTeams)); } catch {}
+          }
+        } else if (settingsCache?.profile) {
+          setProfile(settingsCache.profile);
+        }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           console.error("Failed to load data:", err);
@@ -109,43 +160,6 @@ export default function App() {
 
     return () => controller.abort();
   }, [isAuthenticated, currentUserRole]);
-
-  useEffect(() => {
-    if (!isAuthenticated || currentUserRole !== "Admin" || page !== "settings") return;
-
-    const controller = new AbortController();
-
-    const loadSettings = async () => {
-      try {
-        // Check if cache is still valid (within 5 minutes)
-        if (settingsCache && Date.now() - settingsCacheTime < SETTINGS_CACHE_TTL) {
-          if (settingsCache.profile) {
-            setProfile(settingsCache.profile);
-          }
-          return;
-        }
-
-        const response = await fetch("/api/settings", { signal: controller.signal });
-        if (response.ok) {
-          const settingsData = await response.json();
-          // Update cache
-          settingsCache = settingsData;
-          settingsCacheTime = Date.now();
-          if (settingsData?.profile) {
-            setProfile(settingsData.profile);
-          }
-        }
-      } catch (err) {
-        if ((err as Error).name !== "AbortError") {
-          console.error("Failed to load settings:", err);
-        }
-      }
-    };
-
-    void loadSettings();
-
-    return () => controller.abort();
-  }, [isAuthenticated, currentUserRole, page]);
 
   const handleLogin = async (email: string, password: string, prefetched?: { role: string; user?: { name?: string; email?: string } }) => {
     let role: UserRole;
@@ -200,10 +214,18 @@ export default function App() {
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem(USER_ROLE_KEY);
+      localStorage.removeItem(PROFILE_STORAGE_KEY);
+      localStorage.removeItem("appUsers");
+      localStorage.removeItem("settingsDataCache");
+      localStorage.removeItem("settingsDataCacheTime");
     } catch (error) {
       console.warn("Failed to clear auth state:", error);
     }
+    // Clear in-memory settings cache
+    settingsCache = null;
+    settingsCacheTime = 0;
     setCurrentUserRole("Admin");
+    setProfile({ username: "", companyName: "", role: "", email: "" });
     setIsAuthenticated(false);
     setPage("dashboard");
     setSettingsSection("users");
@@ -310,7 +332,17 @@ export default function App() {
     setCategories((prev) => {
       if (prev.includes(trimmed as Category)) return prev;
       const next = [...prev, trimmed as Category];
-      localStorage.setItem("customCategories", JSON.stringify(next.filter((item) => !DEFAULT_CATEGORIES.includes(item))));
+      const custom = next.filter((item) => !DEFAULT_CATEGORIES.includes(item));
+      // Persist to localStorage (instant seed) and Firestore (source of truth)
+      try { localStorage.setItem("customCategories", JSON.stringify(custom)); } catch {}
+      fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customCategories: custom }),
+      }).catch(console.warn);
+      // Invalidate cache so next load gets fresh data
+      settingsCache = null;
+      settingsCacheTime = 0;
       return next;
     });
   }, []);
@@ -321,13 +353,26 @@ export default function App() {
     setTeams((prev) => {
       if (prev.includes(trimmed)) return prev;
       const next = [...prev, trimmed];
-      localStorage.setItem("customTeams", JSON.stringify(next.filter((item) => !DEFAULT_TEAMS.includes(item))));
+      const custom = next.filter((item) => !DEFAULT_TEAMS.includes(item));
+      // Persist to localStorage (instant seed) and Firestore (source of truth)
+      try { localStorage.setItem("customTeams", JSON.stringify(custom)); } catch {}
+      fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customTeams: custom }),
+      }).catch(console.warn);
+      // Invalidate cache so next load gets fresh data
+      settingsCache = null;
+      settingsCacheTime = 0;
       return next;
     });
   }, []);
 
   const handleUpdateProfile = useCallback(async (updatedProfile: typeof profile) => {
     setProfile(updatedProfile);
+    try {
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updatedProfile));
+    } catch {}
 
     try {
       await fetch("/api/settings", {
@@ -335,6 +380,9 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profile: updatedProfile }),
       });
+      // Invalidate in-memory cache so next load gets fresh data
+      settingsCache = null;
+      settingsCacheTime = 0;
     } catch (error) {
       console.warn("Failed to persist profile settings:", error);
     }

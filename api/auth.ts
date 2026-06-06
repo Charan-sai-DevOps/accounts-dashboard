@@ -57,7 +57,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Member / Viewer check — look up appUsers stored in Firestore
+    // Member / Viewer / secondary Admin check — look up appUsers stored in Firestore
     try {
       const appUsers: any[] = settingsData?.appUsers ?? [];
       const matched = appUsers.find(
@@ -65,17 +65,19 @@ export default async function handler(req: any, res: any) {
           typeof u.email === "string" &&
           u.email.trim().toLowerCase() === email &&
           typeof u.passwordHash === "string" &&
-          u.passwordHash === hashPassword(password) &&
-          (u.role === "Member" || u.role === "Viewer")
+          u.passwordHash === hashPassword(password)
       );
       if (matched) {
+        const role = matched.role === "Admin" || matched.role === "Member" || matched.role === "Viewer"
+          ? matched.role
+          : "Member";
         return res.status(200).json({
           ok: true,
-          role: matched.role,
+          role,
           user: {
             name: typeof matched.name === "string" ? matched.name : "",
             email: typeof matched.email === "string" ? matched.email : "",
-            role: matched.role,
+            role,
           },
           requires2FA: has2FA,
         });

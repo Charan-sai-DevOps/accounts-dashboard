@@ -340,7 +340,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               >
                 {loading ? (
                   <>
-                    <span className="inline-block animate-spin">⏳</span>
+                    <span className="inline-block animate-spin"></span>
                     Signing in...
                   </>
                 ) : (

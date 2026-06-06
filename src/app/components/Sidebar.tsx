@@ -91,6 +91,7 @@ export function Sidebar({
   const visibleNavItems = navItems.filter((item) => item.id !== "settings" || isAdmin);
 
   return (
+    <>
     <aside
       className={`fixed inset-y-0 left-0 z-40 w-64 flex flex-col transition-transform duration-300 lg:static lg:translate-x-0 lg:z-auto ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       style={{
@@ -292,41 +293,6 @@ export function Sidebar({
           </div>
         )}
 
-        {showLogoutConfirm && (
-          <div className="fixed inset-0 z-[999] flex items-center justify-center px-4" style={{ background: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)", top: 0, left: 0, right: 0, bottom: 0 }}>
-            <div className="w-full max-w-sm rounded-3xl overflow-hidden bg-white" style={{ boxShadow: "0 25px 50px rgba(0,0,0,0.15)", margin: "auto" }}>
-              <div className="p-6 text-center">
-                <div className="mx-auto mb-4 w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(239,68,68,0.14)" }}>
-                  <LogOut size={28} style={{ color: "#ef4444" }} />
-                </div>
-                <h2 style={{ color: "#0f172a", fontSize: "22px", fontWeight: 700, marginBottom: "8px" }}>Log out?</h2>
-                <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px", lineHeight: 1.5 }}>
-                  Are you sure you want to log out of your account?
-                </p>
-                <div className="flex gap-3 justify-center">
-                  <button
-                    onClick={() => setShowLogoutConfirm(false)}
-                    className="flex-1 py-3 rounded-xl transition-colors"
-                    style={{ border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontWeight: 600 }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowLogoutConfirm(false);
-                      onLogout?.();
-                    }}
-                    className="flex-1 py-3 rounded-xl text-white transition-colors"
-                    style={{ background: "#ef4444", fontWeight: 600 }}
-                  >
-                    Log out
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div
           onClick={isAdmin ? onNavigateToProfile : undefined}
           className={`flex items-center gap-3 transition-opacity${isAdmin ? " cursor-pointer hover:opacity-80" : ""}`}
@@ -359,5 +325,55 @@ export function Sidebar({
         </div>
       </div>
     </aside>
+
+      {/* Logout confirmation — rendered outside <aside> so CSS transforms don't break fixed positioning */}
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 flex items-center justify-center px-4"
+          style={{ zIndex: 9999, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }}
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl overflow-hidden bg-white"
+            style={{ boxShadow: "0 25px 60px rgba(0,0,0,0.25)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-8 flex flex-col items-center text-center">
+              <div
+                className="mb-5 w-16 h-16 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(239,68,68,0.12)" }}
+              >
+                <LogOut size={30} style={{ color: "#ef4444" }} />
+              </div>
+              <h2 style={{ color: "#0f172a", fontSize: "22px", fontWeight: 700, marginBottom: "8px" }}>
+                Log out?
+              </h2>
+              <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "28px", lineHeight: 1.6 }}>
+                Are you sure you want to log out of your account?
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 py-3 rounded-2xl font-semibold transition-colors"
+                  style={{ border: "1.5px solid #e2e8f0", background: "white", color: "#64748b", fontSize: "14px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    onLogout?.();
+                  }}
+                  className="flex-1 py-3 rounded-2xl text-white font-semibold transition-colors"
+                  style={{ background: "#ef4444", fontSize: "14px" }}
+                >
+                  Log out
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

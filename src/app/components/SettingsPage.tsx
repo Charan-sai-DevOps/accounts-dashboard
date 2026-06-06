@@ -1,12 +1,55 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, memo, useCallback } from "react";
 import {
   Users, Bell, DollarSign, Shield,
   Plus, Trash2, X, Check, UserCheck,
   Clock, Mail, Smartphone, ChevronRight,
   Search, Edit2, AlertTriangle, Layers,
-  Eye, EyeOff,
+  Eye, EyeOff, RefreshCw, Copy,
 } from "lucide-react";
 import { Subscription, getDaysUntilExpiry, Category, Team, categoryColors, getTeamIdentity } from "../data/subscriptions";
+
+// ── Password utilities ────────────────────────────────────────────────────────
+
+const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const LOWER = "abcdefghijklmnopqrstuvwxyz";
+const DIGITS = "0123456789";
+const SPECIAL = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+
+function generatePassword(length = 12): string {
+  // Guarantee at least one of each required character class
+  const required = [
+    UPPER[Math.floor(Math.random() * UPPER.length)],
+    LOWER[Math.floor(Math.random() * LOWER.length)],
+    DIGITS[Math.floor(Math.random() * DIGITS.length)],
+    SPECIAL[Math.floor(Math.random() * SPECIAL.length)],
+  ];
+  const all = UPPER + LOWER + DIGITS + SPECIAL;
+  const rest = Array.from({ length: length - required.length }, () =>
+    all[Math.floor(Math.random() * all.length)]
+  );
+  // Shuffle so the required chars aren't always at the front
+  return [...required, ...rest]
+    .sort(() => Math.random() - 0.5)
+    .join("");
+}
+
+interface PasswordStrength {
+  minLength: boolean;
+  hasUpper: boolean;
+  hasLower: boolean;
+  hasNumber: boolean;
+}
+
+function checkPasswordStrength(password: string): PasswordStrength {
+  return {
+    minLength: password.length >= 8,
+    hasUpper: /[A-Z]/.test(password),
+    hasLower: /[a-z]/.test(password),
+    hasNumber: /[0-9]/.test(password),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 type SettingsSection = "profile" | "users" | "notifications" | "currency" | "2fa" | "categories" | "teams";
 
@@ -124,7 +167,12 @@ function SettingsPageComponent({
   const [users, setUsers] = useState<AppUser[]>(() => {
     try {
       const stored = localStorage.getItem("appUsers");
-      if (stored) return JSON.parse(stored) as AppUser[];
+      if (stored) {
+        const parsed = JSON.parse(stored) as AppUser[];
+        // If cached list doesn't include an Admin entry, discard it so the
+        // API fetch below can populate it with the correct admin user
+        if (parsed.some((u) => u.role === "Admin")) return parsed;
+      }
     } catch {}
     return [];
   });
@@ -142,6 +190,7 @@ function SettingsPageComponent({
   const [editUserId, setEditUserId] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"], password: "" });
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
+  const [passwordCopied, setPasswordCopied] = useState(false);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
 
@@ -181,37 +230,18 @@ function SettingsPageComponent({
     newSub: false,
   });
 
-  // Single consolidated API call for both users and notifications with cache
+  // Always fetch fresh from Firestore — localStorage is only an instant-display seed,
+  // never the source of truth. Removing TTL cache prevents stale data across environments.
   useEffect(() => {
     const loadSettingsData = async () => {
       try {
-        // Check if we have a recent cached version (within 5 minutes)
-        const cachedSettings = localStorage.getItem("settingsDataCache");
-        const cacheTime = localStorage.getItem("settingsDataCacheTime");
-        const now = Date.now();
-
-        if (cachedSettings && cacheTime && (now - parseInt(cacheTime)) < 5 * 60 * 1000) {
-          const data = JSON.parse(cachedSettings);
-          if (Array.isArray(data.appUsers) && data.appUsers.length > 0) {
-            setUsers(data.appUsers);
-          }
-          if (data.notificationSettings) {
-            setBuiltInNotifs(data.notificationSettings);
-          }
-          return;
-        }
-
         const response = await fetch("/api/settings");
         if (!response.ok) return;
         const data = await response.json();
 
-        // Cache the settings data
-        localStorage.setItem("settingsDataCache", JSON.stringify(data));
-        localStorage.setItem("settingsDataCacheTime", now.toString());
-
         if (Array.isArray(data.appUsers) && data.appUsers.length > 0) {
           setUsers(data.appUsers);
-          localStorage.setItem("appUsers", JSON.stringify(data.appUsers));
+          try { localStorage.setItem("appUsers", JSON.stringify(data.appUsers)); } catch {}
         }
 
         if (data.notificationSettings) {
@@ -263,7 +293,7 @@ function SettingsPageComponent({
 
   const handleCreateUser = () => {
     if (!newUser.name || !newUser.email) return;
-    if (!editUserId && newUser.role !== "Admin" && !newUser.password) return;
+    if (!editUserId && !newUser.password) return;
 
     let updatedUsers: AppUser[];
 
@@ -323,6 +353,9 @@ function SettingsPageComponent({
     setUsers(updatedUsers);
     try {
       localStorage.setItem("appUsers", JSON.stringify(updatedUsers));
+      // Invalidate settings cache so deleted user doesn't reappear from cache
+      localStorage.removeItem("settingsDataCache");
+      localStorage.removeItem("settingsDataCacheTime");
     } catch {}
     void saveUsersToAPI(updatedUsers);
     setPendingDeleteId(null);
@@ -790,7 +823,7 @@ function SettingsPageComponent({
                           >
                             <Edit2 size={13} />
                           </button>
-                          {user.role !== 'Admin' && (
+                          {user.id !== 'admin' && (
                             <button
                               onClick={() => requestDeleteUser(user)}
                               className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
@@ -1501,6 +1534,7 @@ function SettingsPageComponent({
                   setEditUserId(null);
                   setNewUser({ name: "", email: "", role: "Member", password: "" });
                   setShowNewUserPassword(false);
+                  setPasswordCopied(false);
                 }}
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
                 style={{ background: "#f1f5f9", color: "#64748b" }}
@@ -1547,11 +1581,26 @@ function SettingsPageComponent({
                   ))}
                 </div>
               </div>
-              {newUser.role !== "Admin" && (
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>
-                    Password {editUserId ? "(leave blank to keep current)" : "*"}
-                  </label>
+              <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block" }}>
+                      Password {editUserId ? "(leave blank to keep current)" : "*"}
+                    </label>
+                    <button
+                      type="button"
+                      title="Generate password"
+                      onClick={() => {
+                        const pwd = generatePassword(12);
+                        setNewUser((p) => ({ ...p, password: pwd }));
+                        setShowNewUserPassword(true);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors"
+                      style={{ fontSize: "11px", fontWeight: 600, color: "#6366f1", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}
+                    >
+                      <RefreshCw size={11} />
+                      Generate
+                    </button>
+                  </div>
                   <div className="relative">
                     <input
                       type={showNewUserPassword ? "text" : "password"}
@@ -1559,23 +1608,71 @@ function SettingsPageComponent({
                       onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
                       placeholder={editUserId ? "Leave blank to keep current" : "Set a login password"}
                       autoComplete="new-password"
-                      className="w-full px-3 py-2.5 pr-10 rounded-xl outline-none"
-                      style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
+                      className="w-full px-3 py-2.5 rounded-xl outline-none"
+                      style={{
+                        border: `1.5px solid ${newUser.password ? "#6366f1" : "#e2e8f0"}`,
+                        fontSize: "13px",
+                        color: "#0f172a",
+                        paddingRight: "72px",
+                      }}
                       onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                      onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                      onBlur={(e) => (e.target.style.borderColor = newUser.password ? "#6366f1" : "#e2e8f0")}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewUserPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
-                      style={{ color: "#94a3b8" }}
-                      tabIndex={-1}
-                    >
-                      {showNewUserPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {/* Copy button */}
+                      {newUser.password && (
+                        <button
+                          type="button"
+                          title="Copy password"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(newUser.password);
+                            setPasswordCopied(true);
+                            setTimeout(() => setPasswordCopied(false), 1500);
+                          }}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ color: passwordCopied ? "#10b981" : "#94a3b8", background: "transparent" }}
+                        >
+                          {passwordCopied ? <Check size={13} /> : <Copy size={13} />}
+                        </button>
+                      )}
+                      {/* Show/hide toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setShowNewUserPassword((v) => !v)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ color: "#94a3b8" }}
+                        tabIndex={-1}
+                      >
+                        {showNewUserPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Strength indicators — only show when password has content */}
+                  {newUser.password && (() => {
+                    const s = checkPasswordStrength(newUser.password);
+                    const rules: [boolean, string][] = [
+                      [s.minLength, "Minimum 8 characters"],
+                      [s.hasUpper, "Must contain at least one uppercase letter"],
+                      [s.hasLower, "Must contain at least one lowercase letter"],
+                      [s.hasNumber, "Must contain at least one number"],
+                    ];
+                    return (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                        {rules.map(([pass, label]) => (
+                          <div key={label} className="flex items-start gap-1.5">
+                            <Check
+                              size={12}
+                              className="flex-shrink-0 mt-0.5"
+                              style={{ color: pass ? "#10b981" : "#cbd5e1" }}
+                            />
+                            <span style={{ fontSize: "11px", color: pass ? "#64748b" : "#94a3b8" }}>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
-              )}
               <div className="flex gap-3 mt-2">
                 <button
                   onClick={() => {
@@ -1583,6 +1680,7 @@ function SettingsPageComponent({
                     setEditUserId(null);
                     setNewUser({ name: "", email: "", role: "Member", password: "" });
                     setShowNewUserPassword(false);
+                    setPasswordCopied(false);
                   }}
                   className="flex-1 py-2.5 rounded-xl"
                   style={{ border: "1.5px solid #e2e8f0", fontSize: "14px", color: "#64748b", background: "white" }}
@@ -1590,7 +1688,7 @@ function SettingsPageComponent({
                   Cancel
                 </button>
                 <button
-                  onClick={() => { handleCreateUser(); setShowNewUserPassword(false); }}
+                  onClick={() => { handleCreateUser(); setShowNewUserPassword(false); setPasswordCopied(false); }}
                   className="flex-1 py-2.5 rounded-xl text-white"
                   style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "14px", fontWeight: 600 }}
                 >
