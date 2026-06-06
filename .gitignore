@@ -1,24 +1,57 @@
+# Credentials and secrets - CRITICAL
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!.github/**/*.json
+.env
+.env.local
+.env.*.local
+.env.production.local
+.env.test.local
+.env.development.local
+
+# Firebase credentials
+*-firebase-adminsdk-*.json
+account-dashboard-*.json
+firebase-adminsdk-*
+credentials/
+secrets/
+
+# API Keys
+.api-keys
+
 # Node dependencies
 node_modules/
+.pnpm-store/
 
 # Build output
 dist/
-
-# Local env files
-.env
-.env.*
+build/
+.next/
 
 # Logs
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
 
 # Vite cache
 .vite/
+.cache/
+.parcel-cache/
 
 # MacOS
 .DS_Store
+.AppleDouble
+.LSOverride
 
 # IDEs
 .vscode/
@@ -28,11 +61,17 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+*.swp
+*.swo
+*~
 
 # Vercel local
 .vercel/
 
-# Firebase admin secret storage
-firebase-adminsdk-*
-.vercel
-.env*
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+*.bak
+*.backup
