@@ -1,4 +1,4 @@
-import { useMemo, useState, memo } from "react";
+import { useMemo, useState, memo, Suspense, lazy } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -370,6 +370,8 @@ function DashboardComponent({ subscriptions, loading = false, onNavigate }: Dash
                         <img
                           src={getActiveLogoSrc(sub)}
                           alt={sub.platform}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-contain rounded-xl"
                           style={{ padding: "1px" }}
                           onError={() => handleLogoError(sub.id, sub.platform, sub.logoDomain)}

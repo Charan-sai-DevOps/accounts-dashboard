@@ -1,9 +1,22 @@
 import { firestore } from "./_firebaseAdmin.js";
 import { randomBytes } from "crypto";
+import { z } from "zod";
 
 const SETTINGS_DOC_ID = "app";
 const SETTINGS_COLLECTION = "settings";
 const VERIFICATION_CODES_COLLECTION = "verification_codes";
+
+// Validation schemas
+const sendOtpSchema = z.object({
+  action: z.literal("send-login-otp"),
+  email: z.string().email(),
+});
+
+const verifyOtpSchema = z.object({
+  action: z.literal("verify-login-otp"),
+  email: z.string().email(),
+  code: z.string().length(6).regex(/^\d+$/),
+});
 
 function normalizeEmail(email: string): string {
   return String(email ?? "").trim().toLowerCase();
@@ -112,32 +125,33 @@ function sendVerificationEmail(email: string, code: string, purpose: string): bo
 }
 
 export default async function handler(req: any, res: any) {
-  // Apply CORS if needed
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  try {
+    // Apply CORS if needed
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
 
-  // Periodically cleanup expired codes
-  cleanupExpiredCodes().catch((error) => {
-    console.error("Cleanup error (non-blocking):", error);
-  });
+    // Periodically cleanup expired codes
+    cleanupExpiredCodes().catch((error) => {
+      console.error("[2FA] Cleanup error (non-blocking):", error);
+    });
 
-  if (req.method === "POST") {
-    const action = req.body?.action;
+    if (req.method === "POST") {
+      const action = req.body?.action;
 
-    // Send verification code for setup
-    if (action === "send") {
-      const email = normalizeEmail(req.body?.email);
+      // Send verification code for setup
+      if (action === "send") {
+        const email = normalizeEmail(req.body?.email);
 
-      if (!email) {
-        return res.status(400).json({ message: "Email is required." });
-      }
+        if (!email) {
+          return res.status(400).json({ message: "Email is required." });
+        }
 
-      try {
+        try {
         const code = generateVerificationCode();
 
         // Store in Firestore (persists across restarts)
@@ -357,6 +371,15 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ message: "Invalid action." });
   }
 
-  res.setHeader("Allow", ["POST", "OPTIONS"]);
-  return res.status(405).end();
+    res.setHeader("Allow", ["POST", "OPTIONS"]);
+    return res.status(405).end();
+  } catch (error) {
+    console.error("[2FA] Unhandled error:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      ...(process.env.NODE_ENV === "development" && {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    });
+  }
 }
