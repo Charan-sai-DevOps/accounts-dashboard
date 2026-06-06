@@ -1,5 +1,6 @@
 import { firestore } from "./_firebaseAdmin.js";
 import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD_HASH, hashPassword, verifyPassword } from "./_auth.js";
+import { checkRateLimit, resetRateLimit, cleanupOldRateLimits } from "./utils/rateLimitUtil.js";
 
 const SETTINGS_DOC_ID = "app";
 const SETTINGS_COLLECTION = "settings";
@@ -50,6 +51,11 @@ async function logAuthEvent(
 }
 
 export default async function handler(req: any, res: any) {
+  // Cleanup old rate limit entries periodically
+  cleanupOldRateLimits().catch((error) => {
+    console.error("Cleanup error (non-blocking):", error);
+  });
+
   if (req.method === "POST") {
     const email = String(req.body?.email ?? "").trim().toLowerCase();
     const password = String(req.body?.password ?? "");
@@ -60,6 +66,16 @@ export default async function handler(req: any, res: any) {
     }
 
     try {
+      // Rate limiting: 5 attempts per 15 minutes per email
+      const rateLimitCheck = await checkRateLimit(email, "login", 5, 15);
+
+      if (!rateLimitCheck.allowed) {
+        const resetTime = new Date(rateLimitCheck.resetAt).toLocaleTimeString();
+        return res.status(429).json({
+          message: `Too many login attempts. Please try again after ${resetTime}.`,
+          retryAfter: Math.ceil((rateLimitCheck.resetAt.getTime() - Date.now()) / 1000),
+        });
+      }
       // Single Firestore read for all auth data
       const { auth } = await getAuthRecord();
       const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
@@ -72,6 +88,8 @@ export default async function handler(req: any, res: any) {
         const passwordMatch = await verifyPassword(password, auth.passwordHash);
         if (passwordMatch) {
           await logAuthEvent(email, "LOGIN_SUCCESS", ipAddress as string);
+          // Reset rate limit on successful login
+          await resetRateLimit(email, "login");
           return res.status(200).json({
             ok: true,
             role: "Admin",
@@ -104,6 +122,8 @@ export default async function handler(req: any, res: any) {
           ? matchedUser.role
           : "Member";
         await logAuthEvent(email, "LOGIN_SUCCESS", ipAddress as string);
+        // Reset rate limit on successful login
+        await resetRateLimit(email, "login");
         return res.status(200).json({
           ok: true,
           role,
@@ -138,6 +158,16 @@ export default async function handler(req: any, res: any) {
     }
 
     try {
+      // Rate limiting: 3 attempts per hour per IP
+      const rateLimitCheck = await checkRateLimit(ipAddress as string, "password_change", 3, 60);
+
+      if (!rateLimitCheck.allowed) {
+        const resetTime = new Date(rateLimitCheck.resetAt).toLocaleTimeString();
+        return res.status(429).json({
+          message: `Too many password change attempts. Please try again after ${resetTime}.`,
+          retryAfter: Math.ceil((rateLimitCheck.resetAt.getTime() - Date.now()) / 1000),
+        });
+      }
       const { docRef, auth } = await getAuthRecord();
 
       const passwordMatch = await verifyPassword(currentPassword, auth.passwordHash);
