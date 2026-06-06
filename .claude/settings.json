@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl -s http://localhost:5173)"
+      "Bash(curl -s http://localhost:5173)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(Start-Sleep -Seconds 3)",
+      "Bash(Get-Content \"C:\\\\Users\\\\webom\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Accounts-Dashboard-Centralized-Subscription-Dashboard\\\\0f04c2e4-b60a-41d9-a028-0e3d975be4ba\\\\tasks\\\\burb7r1fk.output\" -Tail 20)",
+      "Bash(curl -s http://localhost:5175)",
+      "WebFetch(domain:www.webomindapps.com)"
     ]
   }
 }

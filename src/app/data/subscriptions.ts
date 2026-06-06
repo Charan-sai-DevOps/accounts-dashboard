@@ -250,9 +250,9 @@ export function getTeamIdentity(team: string): { bg: string; color: string; ligh
   }
   const hue = Math.abs(hash) % 360;
   return {
-    bg: `hsl(${hue}, 70%, 48% / 0.08)`,
+    bg: `hsla(${hue}, 70%, 48%, 0.08)`,
     color: `hsl(${hue}, 70%, 48%)`,
-    light: `hsl(${hue}, 70%, 48% / 0.15)`,
+    light: `hsla(${hue}, 70%, 48%, 0.15)`,
   };
 }
 

@@ -35,19 +35,20 @@ export default async function handler(req: any, res: any) {
   if (req.method === "POST") {
     const email = String(req.body?.email ?? "").trim().toLowerCase();
     const password = String(req.body?.password ?? "");
-    const { auth } = await getAuthRecord();
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
+    // Single Firestore read for all auth data
+    const { auth } = await getAuthRecord();
+    const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
+    const settingsData = settingsDoc.exists ? (settingsDoc.data() as any) : {};
+    const twoFactorAuth = settingsData?.twoFactorAuth;
+    const has2FA = twoFactorAuth?.email?.enabled === true;
+
     // Admin check
     if (email === auth.email.trim().toLowerCase() && hashPassword(password) === auth.passwordHash) {
-      // Check if admin has 2FA enabled
-      const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
-      const twoFactorAuth = (settingsDoc.data() as any)?.twoFactorAuth;
-      const has2FA = twoFactorAuth?.email?.enabled === true;
-
       return res.status(200).json({
         ok: true,
         role: "Admin",
@@ -58,33 +59,26 @@ export default async function handler(req: any, res: any) {
 
     // Member / Viewer check — look up appUsers stored in Firestore
     try {
-      const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
-      if (settingsDoc.exists) {
-        const appUsers: any[] = (settingsDoc.data() as any)?.appUsers ?? [];
-        const matched = appUsers.find(
-          (u: any) =>
-            typeof u.email === "string" &&
-            u.email.trim().toLowerCase() === email &&
-            typeof u.passwordHash === "string" &&
-            u.passwordHash === hashPassword(password) &&
-            (u.role === "Member" || u.role === "Viewer")
-        );
-        if (matched) {
-          // Check if user has 2FA enabled
-          const twoFactorAuth = (settingsDoc.data() as any)?.twoFactorAuth;
-          const has2FA = twoFactorAuth?.email?.enabled === true;
-
-          return res.status(200).json({
-            ok: true,
+      const appUsers: any[] = settingsData?.appUsers ?? [];
+      const matched = appUsers.find(
+        (u: any) =>
+          typeof u.email === "string" &&
+          u.email.trim().toLowerCase() === email &&
+          typeof u.passwordHash === "string" &&
+          u.passwordHash === hashPassword(password) &&
+          (u.role === "Member" || u.role === "Viewer")
+      );
+      if (matched) {
+        return res.status(200).json({
+          ok: true,
+          role: matched.role,
+          user: {
+            name: typeof matched.name === "string" ? matched.name : "",
+            email: typeof matched.email === "string" ? matched.email : "",
             role: matched.role,
-            user: {
-              name: typeof matched.name === "string" ? matched.name : "",
-              email: typeof matched.email === "string" ? matched.email : "",
-              role: matched.role,
-            },
-            requires2FA: has2FA,
-          });
-        }
+          },
+          requires2FA: has2FA,
+        });
       }
     } catch {}
 

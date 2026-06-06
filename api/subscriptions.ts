@@ -13,35 +13,38 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === "POST") {
     const data = req.body;
-    const docRef = await firestore.collection("subscriptions").add(data);
 
-    try {
-      const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
-      if (settingsDoc.exists) {
-        const settings = settingsDoc.data();
-        const email = typeof settings?.email === "string" ? settings.email : "";
-        const shouldNotify = Boolean(settings?.notifications?.newSubscriptionAdded);
+    // Run Firestore add and settings fetch in parallel
+    const [docRef, settingsDoc] = await Promise.all([
+      firestore.collection("subscriptions").add(data),
+      firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get(),
+    ]);
 
-        if (shouldNotify && email) {
-          await sendEmail({
-            to: email,
-            subject: "New subscription added",
-            html: `
-              <div style="font-family:Arial, sans-serif;color:#111;line-height:1.5;">
-                <p>Hello,</p>
-                <p>A new subscription has been added to your dashboard:</p>
-                <ul>
-                  <li><strong>${data.platform || data.plan || "Subscription"}</strong></li>
-                  <li>Expiry date: ${data.expiryDate || "N/A"}</li>
-                </ul>
-                <p>Open your dashboard to review the details.</p>
-              </div>
-            `,
-          });
-        }
+    // Fire email notification in the background (don't await)
+    if (settingsDoc.exists) {
+      const settings = settingsDoc.data();
+      const email = typeof settings?.email === "string" ? settings.email : "";
+      const shouldNotify = Boolean(settings?.notifications?.newSubscriptionAdded);
+
+      if (shouldNotify && email) {
+        sendEmail({
+          to: email,
+          subject: "New subscription added",
+          html: `
+            <div style="font-family:Arial, sans-serif;color:#111;line-height:1.5;">
+              <p>Hello,</p>
+              <p>A new subscription has been added to your dashboard:</p>
+              <ul>
+                <li><strong>${data.platform || data.plan || "Subscription"}</strong></li>
+                <li>Expiry date: ${data.expiryDate || "N/A"}</li>
+              </ul>
+              <p>Open your dashboard to review the details.</p>
+            </div>
+          `,
+        }).catch((error: unknown) => {
+          console.error("Failed to send new-subscription notification:", error);
+        });
       }
-    } catch (error) {
-      console.error("Failed to send new-subscription notification:", error);
     }
 
     return res.status(201).json({ id: docRef.id });

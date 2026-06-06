@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 
-export const DEFAULT_ADMIN_EMAIL = "charan.sai@webomindapps.com";
-export const DEFAULT_ADMIN_PASSWORD = "Charan@Webomindapps";
+// Admin credentials from environment variables (not hardcoded)
+export const DEFAULT_ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
+export const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "ChangeMe@123";
 
 export function hashPassword(password: string) {
   return createHash("sha256").update(password).digest("hex");

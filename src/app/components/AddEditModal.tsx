@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Search, Loader2 } from "lucide-react";
 import { Subscription, BillingCycle, PaymentMode, Category, Currency, Team, getPlatformIdentity } from "../data/subscriptions";
+import { useDebounce } from "../hooks/useDebounce";
 
 interface AddEditModalProps {
   subscription?: Subscription | null;
@@ -49,6 +50,7 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
   const [brandSuggestions, setBrandSuggestions] = useState<BrandSearchResult[]>([]);
   const [brandSearchLoading, setBrandSearchLoading] = useState(false);
   const [brandSearchOpen, setBrandSearchOpen] = useState(false);
+  const debouncedPlatform = useDebounce(form.platform, 500);
 
   useEffect(() => {
     if (subscription) {
@@ -78,7 +80,7 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
   }, [subscription]);
 
   useEffect(() => {
-    const query = form.platform.trim();
+    const query = debouncedPlatform.trim();
 
     if (subscription || query.length < 2) {
       setBrandSuggestions([]);
@@ -105,10 +107,10 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
     }
 
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(async () => {
-      setBrandSearchLoading(true);
-      pendingRequest = { query, controller };
+    setBrandSearchLoading(true);
+    pendingRequest = { query, controller };
 
+    (async () => {
       try {
         const response = await fetch(`/api/logo-search?q=${encodeURIComponent(query)}`, {
           signal: controller.signal,
@@ -138,13 +140,12 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
         }
         pendingRequest = null;
       }
-    }, 250);
+    })();
 
     return () => {
       controller.abort();
-      window.clearTimeout(timeoutId);
     };
-  }, [form.platform, subscription]);
+  }, [debouncedPlatform, subscription]);
 
   const handlePlatformChange = (val: string) => {
     const identity = getPlatformIdentity(val);

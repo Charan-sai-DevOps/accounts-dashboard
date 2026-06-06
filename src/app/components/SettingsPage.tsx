@@ -135,31 +135,6 @@ function SettingsPageComponent({
     } catch {}
   }, [users]);
 
-  useEffect(() => {
-    const loadUsersFromAPI = async () => {
-      try {
-        const response = await fetch("/api/settings");
-        if (!response.ok) return;
-        const data = await response.json();
-        if (Array.isArray(data.appUsers) && data.appUsers.length > 0) {
-          setUsers(data.appUsers);
-          localStorage.setItem("appUsers", JSON.stringify(data.appUsers));
-        }
-      } catch {}
-    };
-    void loadUsersFromAPI();
-  }, []);
-
-  const saveUsersToAPI = async (usersToSave: AppUser[]) => {
-    try {
-      await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appUsers: usersToSave }),
-      });
-    } catch {}
-  };
-
   const [userSearch, setUserSearch] = useState("");
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -171,10 +146,10 @@ function SettingsPageComponent({
   const [newCategoryName, setNewCategoryName] = useState("");
 
   const [localProfile, setLocalProfile] = useState({
-    username: "Charan Sai",
-    companyName: "Webomind Apps",
+    username: "",
+    companyName: "",
     role: "Admin",
-    email: "charan.sai@webomindapps.com",
+    email: "",
   });
   const profile = propProfile !== undefined ? propProfile : localProfile;
   const setProfile = (newProfile: any) => {
@@ -206,19 +181,56 @@ function SettingsPageComponent({
     newSub: false,
   });
 
+  // Single consolidated API call for both users and notifications with cache
   useEffect(() => {
-    const loadNotificationSettings = async () => {
+    const loadSettingsData = async () => {
       try {
+        // Check if we have a recent cached version (within 5 minutes)
+        const cachedSettings = localStorage.getItem("settingsDataCache");
+        const cacheTime = localStorage.getItem("settingsDataCacheTime");
+        const now = Date.now();
+
+        if (cachedSettings && cacheTime && (now - parseInt(cacheTime)) < 5 * 60 * 1000) {
+          const data = JSON.parse(cachedSettings);
+          if (Array.isArray(data.appUsers) && data.appUsers.length > 0) {
+            setUsers(data.appUsers);
+          }
+          if (data.notificationSettings) {
+            setBuiltInNotifs(data.notificationSettings);
+          }
+          return;
+        }
+
         const response = await fetch("/api/settings");
         if (!response.ok) return;
         const data = await response.json();
+
+        // Cache the settings data
+        localStorage.setItem("settingsDataCache", JSON.stringify(data));
+        localStorage.setItem("settingsDataCacheTime", now.toString());
+
+        if (Array.isArray(data.appUsers) && data.appUsers.length > 0) {
+          setUsers(data.appUsers);
+          localStorage.setItem("appUsers", JSON.stringify(data.appUsers));
+        }
+
         if (data.notificationSettings) {
           setBuiltInNotifs(data.notificationSettings);
         }
       } catch {}
     };
-    void loadNotificationSettings();
+    void loadSettingsData();
   }, []);
+
+  const saveUsersToAPI = async (usersToSave: AppUser[]) => {
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appUsers: usersToSave }),
+      });
+    } catch {}
+  };
 
   const saveNotificationSettings = async (settings: typeof builtInNotifs) => {
     try {

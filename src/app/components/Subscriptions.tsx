@@ -416,34 +416,43 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
                       </td>
                       <td style={{ padding: "14px 16px" }}>
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => openDetail(sub)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                            style={{ background: "rgba(14,165,233,0.08)", color: "#0ea5e9" }}
-                            title="View details"
-                          >
-                            <Eye size={13} />
-                          </button>
-                          {canWrite && (
-                            <button
-                              onClick={() => handleEdit(sub)}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                              style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1" }}
-                              title="Edit"
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => requestDelete(sub)}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                              style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}
-                              title="Delete"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
+                          {(() => {
+                            const isTemp = sub.id.startsWith("temp-");
+                            return (
+                              <>
+                                <button
+                                  onClick={() => openDetail(sub)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                                  style={{ background: "rgba(14,165,233,0.08)", color: "#0ea5e9" }}
+                                  title="View details"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                                {canWrite && (
+                                  <button
+                                    onClick={() => handleEdit(sub)}
+                                    disabled={isTemp}
+                                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                                    style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1", opacity: isTemp ? 0.4 : 1, cursor: isTemp ? "not-allowed" : "pointer" }}
+                                    title={isTemp ? "Saving..." : "Edit"}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    onClick={() => requestDelete(sub)}
+                                    disabled={isTemp}
+                                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                                    style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", opacity: isTemp ? 0.4 : 1, cursor: isTemp ? "not-allowed" : "pointer" }}
+                                    title={isTemp ? "Saving..." : "Delete"}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>

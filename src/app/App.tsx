@@ -18,6 +18,11 @@ type UserRole = "Admin" | "Member" | "Viewer";
 const AUTH_STORAGE_KEY = "subscription-dashboard-auth";
 const USER_ROLE_KEY = "subscription-dashboard-user-role";
 
+// Settings cache with 5-minute TTL to prevent redundant Firestore reads
+let settingsCache: any = null;
+let settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
   const [settingsSection, setSettingsSection] = useState<any>("users");
@@ -78,60 +83,95 @@ export default function App() {
       return;
     }
 
-    const loadSubscriptions = async () => {
+    const controller = new AbortController();
+
+    const loadData = async () => {
       try {
-        const response = await fetch("/api/subscriptions");
-        if (!response.ok) {
-          throw new Error(`Failed to fetch subscriptions: ${response.status}`);
+        const subsResponse = await fetch("/api/subscriptions", { signal: controller.signal });
+
+        if (!subsResponse.ok) {
+          throw new Error(`Failed to fetch subscriptions: ${subsResponse.status}`);
         }
-        const data = sanitizeSubscriptions(await response.json());
+        const data = sanitizeSubscriptions(await subsResponse.json());
         setSubscriptions(data);
         setError(null);
       } catch (err) {
-        console.error("Failed to load subscriptions:", err);
-        setError(err instanceof Error ? err.message : String(err));
+        if ((err as Error).name !== "AbortError") {
+          console.error("Failed to load data:", err);
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    loadSubscriptions();
-  }, [isAuthenticated]);
+    void loadData();
+
+    return () => controller.abort();
+  }, [isAuthenticated, currentUserRole]);
 
   useEffect(() => {
-    if (!isAuthenticated || currentUserRole !== "Admin") return;
+    if (!isAuthenticated || currentUserRole !== "Admin" || page !== "settings") return;
+
+    const controller = new AbortController();
 
     const loadSettings = async () => {
       try {
-        const response = await fetch("/api/settings");
-        if (!response.ok) return;
-        const data = await response.json();
-        if (data?.profile) {
-          setProfile(data.profile);
+        // Check if cache is still valid (within 5 minutes)
+        if (settingsCache && Date.now() - settingsCacheTime < SETTINGS_CACHE_TTL) {
+          if (settingsCache.profile) {
+            setProfile(settingsCache.profile);
+          }
+          return;
+        }
+
+        const response = await fetch("/api/settings", { signal: controller.signal });
+        if (response.ok) {
+          const settingsData = await response.json();
+          // Update cache
+          settingsCache = settingsData;
+          settingsCacheTime = Date.now();
+          if (settingsData?.profile) {
+            setProfile(settingsData.profile);
+          }
         }
       } catch (err) {
-        console.warn("Failed to load settings:", err);
+        if ((err as Error).name !== "AbortError") {
+          console.error("Failed to load settings:", err);
+        }
       }
     };
 
     void loadSettings();
-  }, [isAuthenticated, currentUserRole]);
 
-  const handleLogin = async (email: string, password: string) => {
-    const response = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    return () => controller.abort();
+  }, [isAuthenticated, currentUserRole, page]);
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-      throw new Error(data?.message || "Invalid email or password.");
+  const handleLogin = async (email: string, password: string, prefetched?: { role: string; user?: { name?: string; email?: string } }) => {
+    let role: UserRole;
+    let userData: { name?: string; email?: string } | undefined;
+
+    if (prefetched) {
+      // Auth already verified by LoginPage — use prefetched result, no redundant API call
+      role = prefetched.role === "Member" || prefetched.role === "Viewer" ? prefetched.role : "Admin";
+      userData = prefetched.user;
+    } else {
+      // Fallback: fetch auth (used by OTP flow where LoginPage doesn't prefetch)
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || "Invalid email or password.");
+      }
+
+      const data = await response.json();
+      role = data.role === "Member" || data.role === "Viewer" ? data.role : "Admin";
+      userData = data.user;
     }
-
-    const data = await response.json();
-    const role: UserRole =
-      data.role === "Member" || data.role === "Viewer" ? data.role : "Admin";
 
     try {
       localStorage.setItem(AUTH_STORAGE_KEY, "true");
@@ -140,16 +180,18 @@ export default function App() {
 
     setCurrentUserRole(role);
 
-    if (role !== "Admin" && data.user) {
-      const userName = (data.user.name || "").trim() || email.split("@")[0];
+    if (role !== "Admin" && userData) {
+      const userName = (userData.name || "").trim() || email.split("@")[0];
       setProfile({
         username: userName,
         companyName: "",
         role,
-        email: data.user.email ?? email,
+        email: userData.email ?? email,
       });
     }
 
+    // Reset loading to true so Dashboard shows skeleton while data loads
+    setLoading(true);
     setIsAuthenticated(true);
     setPage("dashboard");
   };
@@ -168,6 +210,14 @@ export default function App() {
   };
 
   const handleAdd = useCallback(async (sub: Omit<Subscription, "id">) => {
+    const tempId = `temp-${Date.now()}`;
+    const tempSubscription = sanitizeSubscriptions([{ ...sub, id: tempId }])[0];
+
+    if (!tempSubscription) return;
+
+    // Optimistic: instantly add to UI with temp ID — only sanitize the new item, not the whole list
+    setSubscriptions((prev) => [...prev, tempSubscription]);
+
     try {
       const response = await fetch("/api/subscriptions", {
         method: "POST",
@@ -178,15 +228,31 @@ export default function App() {
         throw new Error(`Failed to add subscription: ${response.status}`);
       }
       const data = await response.json();
-      setSubscriptions((prev) => sanitizeSubscriptions([...prev, { ...sub, id: data.id }]));
+      // Replace temp ID with real Firestore ID — no need to re-sanitize the whole list
+      setSubscriptions((prev) =>
+        prev.map((s) => (s.id === tempId ? { ...s, id: data.id } : s))
+      );
       setError(null);
     } catch (err) {
       console.error("Failed to add subscription:", err);
       setError(err instanceof Error ? err.message : String(err));
+      // Rollback: remove the temp subscription
+      setSubscriptions((prev) => prev.filter((s) => s.id !== tempId));
+      toast.error("Failed to add subscription. Please try again.");
     }
   }, []);
 
   const handleEdit = useCallback(async (id: string, sub: Omit<Subscription, "id">) => {
+    let originalSubscription: Subscription | undefined;
+    const sanitized = sanitizeSubscriptions([{ ...sub, id }])[0];
+
+    // Optimistic: instantly apply edits to UI — only sanitize the edited item
+    setSubscriptions((prev) => {
+      originalSubscription = prev.find((s) => s.id === id);
+      if (!sanitized) return prev;
+      return prev.map((s) => (s.id === id ? sanitized : s));
+    });
+
     try {
       const response = await fetch(`/api/subscriptions/${id}`, {
         method: "PUT",
@@ -196,11 +262,17 @@ export default function App() {
       if (!response.ok) {
         throw new Error(`Failed to update subscription: ${response.status}`);
       }
-      setSubscriptions((prev) => sanitizeSubscriptions(prev.map((s) => (s.id === id ? { ...sub, id } : s))));
       setError(null);
     } catch (err) {
       console.error("Failed to update subscription:", err);
       setError(err instanceof Error ? err.message : String(err));
+      // Rollback to original
+      if (originalSubscription) {
+        setSubscriptions((prev) =>
+          prev.map((s) => (s.id === id ? originalSubscription! : s))
+        );
+      }
+      toast.error("Failed to update subscription. Please try again.");
     }
   }, []);
 

@@ -9,8 +9,8 @@ const defaultAppSettings = {
   fullName: "",
   company: "",
   profile: {
-    username: "Charan Sai",
-    companyName: "Webomind Apps",
+    username: "",
+    companyName: "",
     role: "Admin",
     email: DEFAULT_ADMIN_EMAIL,
   },
