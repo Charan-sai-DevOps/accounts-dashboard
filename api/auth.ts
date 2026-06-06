@@ -3,6 +3,8 @@ import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD_HASH, hashPassword, verifyP
 import { checkRateLimit, resetRateLimit, cleanupOldRateLimits } from "./utils/rateLimitUtil.js";
 import { loginSchema, passwordChangeSchema, formatValidationError } from "./schemas/validation.js";
 import { logAuthSuccess, logAuthFailure, logPasswordChange, logRateLimited } from "./utils/auditLog.js";
+import { requireValidCsrfToken } from "./middleware/csrf.js";
+import { ApiError, AuthError, ValidationError } from "./utils/errorHandler.js";
 
 const SETTINGS_DOC_ID = "app";
 const SETTINGS_COLLECTION = "settings";
@@ -148,6 +150,15 @@ export default async function handler(req: any, res: any) {
     const userAgent = req.headers["user-agent"];
 
     try {
+      // Verify CSRF token for state-changing operation
+      try {
+        requireValidCsrfToken(req);
+      } catch (csrfError) {
+        return res.status(403).json({
+          ok: false,
+          message: "CSRF token invalid or expired",
+        });
+      }
       // Input validation using Zod schemas
       const validationResult = passwordChangeSchema.safeParse(req.body);
 

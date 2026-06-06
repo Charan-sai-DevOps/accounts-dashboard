@@ -1,5 +1,6 @@
 import { firestore } from "./_firebaseAdmin.js";
 import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_NAME, DEFAULT_ADMIN_PASSWORD_HASH, hashPassword } from "./_auth.js";
+import { requireValidCsrfToken } from "./middleware/csrf.js";
 
 const SETTINGS_DOC_ID = "app";
 const SETTINGS_COLLECTION = "settings";
@@ -145,6 +146,13 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method === "PUT") {
+    try {
+      // Verify CSRF token for state-changing operation
+      requireValidCsrfToken(req);
+    } catch (csrfError) {
+      return res.status(403).json({ ok: false, message: "CSRF token invalid" });
+    }
+
     const payload = req.body;
     const existingDoc = await docRef.get();
     const existingData = (existingDoc.exists ? existingDoc.data() : {}) as any;

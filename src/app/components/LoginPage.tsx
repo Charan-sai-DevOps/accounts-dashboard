@@ -257,12 +257,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   border: "2px solid #e2e8f0",
                   background: "#f8fafc"
                 }}
-                  onFocus={() => {
-                    const parent = (event?.currentTarget as HTMLElement)?.parentElement;
-                    if (parent) {
-                      parent.style.borderColor = "#2563eb";
-                      parent.style.background = "#ffffff";
-                    }
+                  onFocus={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "#2563eb";
+                    (e.currentTarget as HTMLElement).style.background = "#ffffff";
+                  }}
+                  onBlur={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0";
+                    (e.currentTarget as HTMLElement).style.background = "#f8fafc";
                   }}
                 >
                   <Mail size={18} style={{ color: "#64748b", flexShrink: 0 }} />
@@ -285,12 +286,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   border: "2px solid #e2e8f0",
                   background: "#f8fafc"
                 }}
-                  onFocus={() => {
-                    const parent = (event?.currentTarget as HTMLElement)?.parentElement;
-                    if (parent) {
-                      parent.style.borderColor = "#2563eb";
-                      parent.style.background = "#ffffff";
-                    }
+                  onFocus={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "#2563eb";
+                    (e.currentTarget as HTMLElement).style.background = "#ffffff";
+                  }}
+                  onBlur={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0";
+                    (e.currentTarget as HTMLElement).style.background = "#f8fafc";
                   }}
                 >
                   <Lock size={18} style={{ color: "#64748b", flexShrink: 0 }} />
