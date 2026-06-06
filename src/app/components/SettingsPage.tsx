@@ -1,4 +1,4 @@
-import { useState, useEffect, memo, useCallback } from "react";
+import { useState, useEffect, memo, useCallback, useMemo } from "react";
 import {
   Users, Bell, DollarSign, Shield,
   Plus, Trash2, X, Check, UserCheck,
@@ -7,47 +7,11 @@ import {
   Eye, EyeOff, RefreshCw, Copy,
 } from "lucide-react";
 import { Subscription, getDaysUntilExpiry, Category, Team, categoryColors, getTeamIdentity } from "../data/subscriptions";
-
-// ── Password utilities ────────────────────────────────────────────────────────
-
-const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-const LOWER = "abcdefghijklmnopqrstuvwxyz";
-const DIGITS = "0123456789";
-const SPECIAL = "!@#$%^&*()_+-=[]{}|;:,.<>?";
-
-function generatePassword(length = 12): string {
-  // Guarantee at least one of each required character class
-  const required = [
-    UPPER[Math.floor(Math.random() * UPPER.length)],
-    LOWER[Math.floor(Math.random() * LOWER.length)],
-    DIGITS[Math.floor(Math.random() * DIGITS.length)],
-    SPECIAL[Math.floor(Math.random() * SPECIAL.length)],
-  ];
-  const all = UPPER + LOWER + DIGITS + SPECIAL;
-  const rest = Array.from({ length: length - required.length }, () =>
-    all[Math.floor(Math.random() * all.length)]
-  );
-  // Shuffle so the required chars aren't always at the front
-  return [...required, ...rest]
-    .sort(() => Math.random() - 0.5)
-    .join("");
-}
-
-interface PasswordStrength {
-  minLength: boolean;
-  hasUpper: boolean;
-  hasLower: boolean;
-  hasNumber: boolean;
-}
-
-function checkPasswordStrength(password: string): PasswordStrength {
-  return {
-    minLength: password.length >= 8,
-    hasUpper: /[A-Z]/.test(password),
-    hasLower: /[a-z]/.test(password),
-    hasNumber: /[0-9]/.test(password),
-  };
-}
+import { generateSecurePassword, checkPasswordStrength, PasswordStrength, getPasswordStrengthMessage } from "../utils/securePassword";
+import { useDebounce, useRateLimit } from "../utils/hooks";
+import { validateData, safeParse, userSchema } from "../utils/validation";
+import { readSecureStorage, writeSecureStorage } from "../utils/secureStorage";
+import { z } from "zod";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -164,26 +128,47 @@ function SettingsPageComponent({
     }
   };
 
+  // Cache schema - only non-sensitive data
+  const userCacheSchema = z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string(),
+    role: z.enum(['Admin', 'Member', 'Viewer']),
+    avatar: z.string().optional(),
+  }));
+
   const [users, setUsers] = useState<AppUser[]>(() => {
-    try {
-      const stored = localStorage.getItem("appUsers");
-      if (stored) {
-        const parsed = JSON.parse(stored) as AppUser[];
-        // If cached list doesn't include an Admin entry, discard it so the
-        // API fetch below can populate it with the correct admin user
-        if (parsed.some((u) => u.role === "Admin")) return parsed;
-      }
-    } catch {}
+    // Try to load from secure cache (non-sensitive data only)
+    const cached = readSecureStorage(
+      "appUsersCache",
+      userCacheSchema,
+      []
+    );
+
+    // Only use cache if it includes Admin
+    if (cached.length > 0 && cached.some((u) => u.role === "Admin")) {
+      // Cast back to AppUser format
+      return cached as unknown as AppUser[];
+    }
     return [];
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem("appUsers", JSON.stringify(users));
-    } catch {}
+  // Debounce storage writes - cache non-sensitive data only
+  const debouncedSaveUsers = useCallback(() => {
+    const cacheData = users.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      avatar: u.avatar,
+      // NEVER cache: password, lastLogin (sensitive)
+    }));
+
+    writeSecureStorage("appUsersCache", cacheData, userCacheSchema);
   }, [users]);
 
   const [userSearch, setUserSearch] = useState("");
+  const debouncedSearch = useDebounce(userSearch, 300);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
@@ -191,8 +176,12 @@ function SettingsPageComponent({
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Member" as AppUser["role"], password: "" });
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
+  const [generatedPasswordDisplay, setGeneratedPasswordDisplay] = useState<string | null>(null);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+
+  // Rate limiting for user creation (5 per minute)
+  const { isAllowed: canCreateUser, getRetryAfter } = useRateLimit(5, 60000);
 
   const [localProfile, setLocalProfile] = useState({
     username: "",
@@ -254,22 +243,66 @@ function SettingsPageComponent({
 
   const saveUsersToAPI = async (usersToSave: AppUser[]) => {
     try {
-      await fetch("/api/settings", {
+      // Validate before sending
+      const validated = userSchema.array().safeParse(usersToSave);
+      if (!validated.success) {
+        setProfileSaveMessage({
+          type: "error",
+          text: "User data validation failed",
+        });
+        return false;
+      }
+
+      // Get CSRF token from meta tag or header
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content
+        || (document.querySelector('meta[name="x-csrf-token"]') as HTMLMetaElement)?.content;
+
+      const response = await fetch("/api/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appUsers: usersToSave }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken && { "X-CSRF-Token": csrfToken }),
+        },
+        body: JSON.stringify({ appUsers: validated.data }),
       });
-    } catch {}
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to save users");
+      }
+
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save users";
+      setProfileSaveMessage({ type: "error", text: message });
+      console.error("[Settings] Error saving users:", error);
+      return false;
+    }
   };
 
   const saveNotificationSettings = async (settings: typeof builtInNotifs) => {
     try {
-      await fetch("/api/settings", {
+      // Get CSRF token
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+
+      const response = await fetch("/api/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken && { "X-CSRF-Token": csrfToken }),
+        },
         body: JSON.stringify({ notificationSettings: settings }),
       });
-    } catch {}
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to save notification settings");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save settings";
+      console.error("[Settings] Notification error:", error);
+      // Silently fail for non-critical notifications
+    }
   };
 
   const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([]);
@@ -292,8 +325,33 @@ function SettingsPageComponent({
   const [verifySuccess, setVerifySuccess] = useState(false);
 
   const handleCreateUser = () => {
-    if (!newUser.name || !newUser.email) return;
-    if (!editUserId && !newUser.password) return;
+    // Rate limiting - 5 user creations per minute
+    if (!editUserId && !canCreateUser()) {
+      const retryAfter = getRetryAfter();
+      setProfileSaveMessage({
+        type: "error",
+        text: `Too many user creations. Please wait ${retryAfter}s`,
+      });
+      return;
+    }
+
+    // Validate inputs
+    if (!newUser.name || !newUser.email) {
+      setProfileSaveMessage({ type: "error", text: "Name and email are required" });
+      return;
+    }
+
+    if (!editUserId && !newUser.password) {
+      setProfileSaveMessage({ type: "error", text: "Password is required for new users" });
+      return;
+    }
+
+    // Validate email format
+    const emailValidation = z.string().email().safeParse(newUser.email);
+    if (!emailValidation.success) {
+      setProfileSaveMessage({ type: "error", text: "Invalid email format" });
+      return;
+    }
 
     let updatedUsers: AppUser[];
 
@@ -642,8 +700,14 @@ function SettingsPageComponent({
     }
   };
 
-  const filteredUsers = users.filter(
-    (u) => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())
+  // Memoize filtered users - only recalculate when search or users change
+  const filteredUsers = useMemo(
+    () => users.filter(
+      (u) =>
+        u.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        u.email.toLowerCase().includes(debouncedSearch.toLowerCase())
+    ),
+    [users, debouncedSearch]
   );
 
   const categoryOrder: Category[] = categories;
@@ -1588,17 +1652,25 @@ function SettingsPageComponent({
                     </label>
                     <button
                       type="button"
-                      title="Generate password"
+                      title="Generate secure password"
                       onClick={() => {
-                        const pwd = generatePassword(12);
-                        setNewUser((p) => ({ ...p, password: pwd }));
+                        // Generate SECURE password (crypto.getRandomValues)
+                        const pwd = generateSecurePassword(12);
+                        setGeneratedPasswordDisplay(pwd);
                         setShowNewUserPassword(true);
+                        setNewUser((p) => ({ ...p, password: pwd }));
+
+                        // Auto-clear after 30 seconds for security
+                        setTimeout(() => {
+                          setGeneratedPasswordDisplay(null);
+                          setNewUser((p) => ({ ...p, password: "" }));
+                        }, 30000);
                       }}
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors"
                       style={{ fontSize: "11px", fontWeight: 600, color: "#6366f1", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}
                     >
                       <RefreshCw size={11} />
-                      Generate
+                      Generate Secure
                     </button>
                   </div>
                   <div className="relative">
@@ -1606,7 +1678,7 @@ function SettingsPageComponent({
                       type={showNewUserPassword ? "text" : "password"}
                       value={newUser.password}
                       onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
-                      placeholder={editUserId ? "Leave blank to keep current" : "Set a login password"}
+                      placeholder={editUserId ? "Leave blank to keep current" : "Set a login password or click Generate"}
                       autoComplete="new-password"
                       className="w-full px-3 py-2.5 rounded-xl outline-none"
                       style={{
@@ -1623,11 +1695,15 @@ function SettingsPageComponent({
                       {newUser.password && (
                         <button
                           type="button"
-                          title="Copy password"
+                          title="Copy password to clipboard"
                           onClick={async () => {
-                            await navigator.clipboard.writeText(newUser.password);
-                            setPasswordCopied(true);
-                            setTimeout(() => setPasswordCopied(false), 1500);
+                            try {
+                              await navigator.clipboard.writeText(newUser.password);
+                              setPasswordCopied(true);
+                              setTimeout(() => setPasswordCopied(false), 1500);
+                            } catch (err) {
+                              console.error('Failed to copy password');
+                            }
                           }}
                           className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
                           style={{ color: passwordCopied ? "#10b981" : "#94a3b8", background: "transparent" }}
