@@ -16,6 +16,7 @@ async function getAuthRecord() {
   if (!doc.exists) {
     return {
       docRef,
+      data: {},
       auth: {
         email: DEFAULT_ADMIN_EMAIL,
         passwordHash: DEFAULT_ADMIN_PASSWORD_HASH,
@@ -26,6 +27,7 @@ async function getAuthRecord() {
   const data = doc.data() as any;
   return {
     docRef,
+    data,
     auth: {
       email: typeof data?.auth?.email === "string" ? data.auth.email : DEFAULT_ADMIN_EMAIL,
       passwordHash:
@@ -77,10 +79,8 @@ export default async function handler(req: any, res: any) {
           retryAfter: Math.ceil((rateLimitCheck.resetAt.getTime() - Date.now()) / 1000),
         });
       }
-      // Single Firestore read for all auth data
-      const { auth } = await getAuthRecord();
-      const settingsDoc = await firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get();
-      const settingsData = settingsDoc.exists ? (settingsDoc.data() as any) : {};
+      // Single Firestore read for all auth and settings data
+      const { auth, data: settingsData } = await getAuthRecord();
       const twoFactorAuth = settingsData?.twoFactorAuth;
       const has2FA = twoFactorAuth?.email?.enabled === true;
 

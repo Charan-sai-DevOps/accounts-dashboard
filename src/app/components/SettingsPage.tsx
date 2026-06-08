@@ -219,8 +219,8 @@ function SettingsPageComponent({
     newSub: false,
   });
 
-  // Always fetch fresh from Firestore — localStorage is only an instant-display seed,
-  // never the source of truth. Removing TTL cache prevents stale data across environments.
+  // Load settings data only when component mounts (lazy load when user navigates to settings)
+  // Avoid fetching in App.tsx to prevent blocking initial page load
   useEffect(() => {
     const loadSettingsData = async () => {
       try {
@@ -236,9 +236,11 @@ function SettingsPageComponent({
         if (data.notificationSettings) {
           setBuiltInNotifs(data.notificationSettings);
         }
-      } catch {}
+      } catch (err) {
+        console.warn("Failed to load settings:", err);
+      }
     };
-    void loadSettingsData();
+    loadSettingsData();
   }, []);
 
   const saveUsersToAPI = async (usersToSave: AppUser[]) => {
@@ -323,6 +325,9 @@ function SettingsPageComponent({
   const [showQR, setShowQR] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifySuccess, setVerifySuccess] = useState(false);
+
+  // Focus state management for better UX (prevents layout thrashing)
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const handleCreateUser = () => {
     // Rate limiting - 5 user creations per minute
@@ -585,25 +590,40 @@ function SettingsPageComponent({
 
   const handleEmailAuthToggle = async (enabled: boolean) => {
     if (!enabled) {
-      // Disable email auth
+      // Disable email auth - optimistic update for faster UX
       setEmailAuthLoading(true);
       setEmailAuthMessage(null);
+
+      // Optimistic: Disable immediately on frontend
+      setEmailAuth(false);
+      setShowEmailVerification(false);
+      setEmailVerificationCode("");
+      setEmailUsedForVerification("");
+
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout (faster than enable)
+
         const response = await fetch("/api/2fa", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "disable" }),
+          signal: controller.signal,
         });
+
+        clearTimeout(timeout);
+
         if (!response.ok) throw new Error("Failed to disable email authentication");
-        setEmailAuth(false);
-        setShowEmailVerification(false);
-        setEmailVerificationCode("");
-        setEmailUsedForVerification("");
+
         setEmailAuthMessage({ type: "success", text: "Email authentication disabled." });
       } catch (error) {
+        // Revert optimistic update if disable fails
+        setEmailAuth(true);
         setEmailAuthMessage({
           type: "error",
-          text: error instanceof Error ? error.message : "Failed to disable email authentication.",
+          text: error instanceof Error && error.name === "AbortError"
+            ? "Request timed out. Please try again."
+            : error instanceof Error ? error.message : "Failed to disable email authentication.",
         });
       } finally {
         setEmailAuthLoading(false);
@@ -621,29 +641,49 @@ function SettingsPageComponent({
         throw new Error("Email address is not set in your profile.");
       }
 
+      // Show verification UI immediately for faster UX
+      setShowEmailVerification(true);
+      setEmailVerificationCode("");
+      setEmailUsedForVerification(emailToUse);
+      setEmailAuthMessage({
+        type: "info",
+        text: `Sending verification code to ${emailToUse}...`,
+      });
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
       const response = await fetch("/api/2fa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "send", email: emailToUse }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.message || "Failed to send verification code");
       }
 
-      setShowEmailVerification(true);
-      setEmailVerificationCode("");
-      setEmailUsedForVerification(emailToUse);
+      // Update message to confirm code was sent
       setEmailAuthMessage({
         type: "info",
         text: `Verification code sent to ${emailToUse}. Please check your email and enter the code below.`,
       });
     } catch (error) {
-      setEmailAuthMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Failed to send verification code.",
-      });
+      if (error instanceof Error && error.name === "AbortError") {
+        setEmailAuthMessage({
+          type: "error",
+          text: "Request timed out. Please try again.",
+        });
+      } else {
+        setEmailAuthMessage({
+          type: "error",
+          text: error instanceof Error ? error.message : "Failed to send verification code.",
+        });
+      }
       setShowEmailVerification(false);
     } finally {
       setEmailAuthLoading(false);
@@ -668,7 +708,12 @@ function SettingsPageComponent({
     }
 
     setEmailAuthLoading(true);
+    setEmailAuthMessage({ type: "info", text: "Verifying code..." });
+
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
       const response = await fetch("/api/2fa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -677,13 +722,17 @@ function SettingsPageComponent({
           email: emailUsedForVerification,
           code: emailVerificationCode,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.message || "Invalid verification code. Please try again.");
       }
 
+      // Optimistic update - show success immediately
       setEmailAuth(true);
       setShowEmailVerification(false);
       setEmailVerificationCode("");
@@ -691,10 +740,17 @@ function SettingsPageComponent({
       setEmailAuthMessage({ type: "success", text: "✅ Email authentication enabled successfully!" });
       setTimeout(() => setEmailAuthMessage(null), 3000);
     } catch (error) {
-      setEmailAuthMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Failed to verify code. Please try again.",
-      });
+      if (error instanceof Error && error.name === "AbortError") {
+        setEmailAuthMessage({
+          type: "error",
+          text: "Request timed out. Please try again.",
+        });
+      } else {
+        setEmailAuthMessage({
+          type: "error",
+          text: error instanceof Error ? error.message : "Failed to verify code. Please try again.",
+        });
+      }
     } finally {
       setEmailAuthLoading(false);
     }
@@ -764,7 +820,7 @@ function SettingsPageComponent({
       {/* Desktop: left sidebar */}
       <div className="hidden lg:flex w-64 flex-shrink-0 p-5 flex-col gap-2" style={{ background: "white", borderRight: "1px solid #e2e8f0", minHeight: "100%" }}>
         <div className="mb-4">
-          <h2 style={{ color: "#0f172a", marginBottom: "4px" }}>Settings</h2>
+          <h2 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Settings</h2>
           <p style={{ fontSize: "12px", color: "#94a3b8" }}>Manage your account</p>
         </div>
         {settingsNav.map((item) => {
@@ -798,7 +854,7 @@ function SettingsPageComponent({
           <div className="flex flex-col gap-6 max-w-4xl">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>User Management</h1>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>User Management</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>Manage team members, roles, and access</p>
               </div>
               <button
@@ -835,10 +891,15 @@ function SettingsPageComponent({
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
                 placeholder="Search users..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl outline-none"
-                style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a", background: "white" }}
-                onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl outline-none transition-all"
+                style={{
+                  border: `1.5px solid ${focusedField === "userSearch" ? "#6366f1" : "#e2e8f0"}`,
+                  fontSize: "13px",
+                  color: "#0f172a",
+                  background: "white"
+                }}
+                onFocus={() => setFocusedField("userSearch")}
+                onBlur={() => setFocusedField(null)}
               />
             </div>
 
@@ -912,7 +973,7 @@ function SettingsPageComponent({
             <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
               <div className="flex items-center gap-2 mb-4">
                 <UserCheck size={16} style={{ color: '#6366f1' }} />
-                <h3 style={{ color: '#0f172a' }}>Last Login Activity</h3>
+                <h3 style={{ color: '#0f172a', fontWeight: 700 }}>Last Login Activity</h3>
               </div>
               <div className="flex flex-col gap-3">
                 {[...users].sort((a, b) => b.lastLogin.localeCompare(a.lastLogin)).map((user) => (
@@ -944,7 +1005,7 @@ function SettingsPageComponent({
           <div className="flex flex-col gap-6 max-w-2xl">
             <div className="flex items-center justify-between">
               <div>
-                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Profile</h1>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Profile</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>Manage your account details and password</p>
               </div>
             </div>
@@ -963,7 +1024,7 @@ function SettingsPageComponent({
                     {profile.username ? profile.username[0].toUpperCase() : "C"}
                   </div>
                   <div>
-                    <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#0f172a" }}>{profile.username}</h3>
+                    <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{profile.username}</h3>
                     <p style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>{profile.email}</p>
                   </div>
                 </div>
@@ -986,16 +1047,16 @@ function SettingsPageComponent({
                     value={profile.username}
                     onChange={(e) => setProfile((p: any) => ({ ...p, username: e.target.value }))}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                     style={{
-                      border: "1.5px solid #e2e8f0",
+                      border: `1.5px solid ${focusedField === "username" ? "#6366f1" : "#e2e8f0"}`,
                       fontSize: "13px",
                       color: !isEditing ? "#64748b" : "#0f172a",
                       background: !isEditing ? "#f8fafc" : "white",
                       cursor: !isEditing ? "not-allowed" : "text",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    onFocus={() => isEditing && setFocusedField("username")}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </div>
                 <div>
@@ -1004,16 +1065,16 @@ function SettingsPageComponent({
                     value={profile.companyName}
                     onChange={(e) => setProfile((p: any) => ({ ...p, companyName: e.target.value }))}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                     style={{
-                      border: "1.5px solid #e2e8f0",
+                      border: `1.5px solid ${focusedField === "companyName" ? "#6366f1" : "#e2e8f0"}`,
                       fontSize: "13px",
                       color: !isEditing ? "#64748b" : "#0f172a",
                       background: !isEditing ? "#f8fafc" : "white",
                       cursor: !isEditing ? "not-allowed" : "text",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    onFocus={() => isEditing && setFocusedField("companyName")}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </div>
                 <div>
@@ -1038,23 +1099,23 @@ function SettingsPageComponent({
                     value={profile.email}
                     onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                     style={{
-                      border: "1.5px solid #e2e8f0",
+                      border: `1.5px solid ${focusedField === "email" ? "#6366f1" : "#e2e8f0"}`,
                       fontSize: "13px",
                       color: !isEditing ? "#64748b" : "#0f172a",
                       background: !isEditing ? "#f8fafc" : "white",
                       cursor: !isEditing ? "not-allowed" : "text",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    onFocus={() => isEditing && setFocusedField("email")}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </div>
               </div>
             </div>
 
             <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-              <h3 style={{ color: "#0f172a", marginBottom: "12px" }}>Change Password</h3>
+              <h3 style={{ color: "#0f172a", marginBottom: "12px", fontWeight: 700 }}>Change Password</h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "6px" }}>Current Password</label>
@@ -1063,16 +1124,16 @@ function SettingsPageComponent({
                     value={passwordData.currentPassword}
                     onChange={(e) => setPasswordData((p) => ({ ...p, currentPassword: e.target.value }))}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                     style={{
-                      border: "1.5px solid #e2e8f0",
+                      border: `1.5px solid ${focusedField === "currentPassword" ? "#6366f1" : "#e2e8f0"}`,
                       fontSize: "13px",
                       color: !isEditing ? "#64748b" : "#0f172a",
                       background: !isEditing ? "#f8fafc" : "white",
                       cursor: !isEditing ? "not-allowed" : "text",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    onFocus={() => isEditing && setFocusedField("currentPassword")}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </div>
                 <div>
@@ -1082,16 +1143,16 @@ function SettingsPageComponent({
                     value={passwordData.newPassword}
                     onChange={(e) => setPasswordData((p) => ({ ...p, newPassword: e.target.value }))}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                     style={{
-                      border: "1.5px solid #e2e8f0",
+                      border: `1.5px solid ${focusedField === "newPassword" ? "#6366f1" : "#e2e8f0"}`,
                       fontSize: "13px",
                       color: !isEditing ? "#64748b" : "#0f172a",
                       background: !isEditing ? "#f8fafc" : "white",
                       cursor: !isEditing ? "not-allowed" : "text",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    onFocus={() => isEditing && setFocusedField("newPassword")}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </div>
                 <div>
@@ -1101,16 +1162,16 @@ function SettingsPageComponent({
                     value={passwordData.confirmPassword}
                     onChange={(e) => setPasswordData((p) => ({ ...p, confirmPassword: e.target.value }))}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2.5 rounded-xl outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                     style={{
-                      border: "1.5px solid #e2e8f0",
+                      border: `1.5px solid ${focusedField === "confirmPassword" ? "#6366f1" : "#e2e8f0"}`,
                       fontSize: "13px",
                       color: !isEditing ? "#64748b" : "#0f172a",
                       background: !isEditing ? "#f8fafc" : "white",
                       cursor: !isEditing ? "not-allowed" : "text",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    onFocus={() => isEditing && setFocusedField("confirmPassword")}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </div>
               </div>
@@ -1160,7 +1221,7 @@ function SettingsPageComponent({
           <div className="flex flex-col gap-6 max-w-3xl">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Categories</h1>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Categories</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>View all categories and associated platforms</p>
               </div>
               <button
@@ -1175,14 +1236,9 @@ function SettingsPageComponent({
             <div className="grid grid-cols-1 gap-4">
               {categoryOrder.map((category) => (
                 <div key={category} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-                  <div className="flex items-center justify-between gap-3 mb-4">
-                    <div>
-                      <p style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{category}</p>
-                      <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>{categoryPlatforms[category]?.length || 0} platform{categoryPlatforms[category]?.length === 1 ? "" : "s"}</p>
-                    </div>
-                  <div className="px-3 py-1 rounded-full" style={{ background: `${categoryColors[category] || "#6366f1"}22`, color: categoryColors[category] || "#6366f1", fontWeight: 700, fontSize: "12px" }}>
-                    {category}
-                  </div>
+                  <div className="mb-4">
+                    <p style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{category}</p>
+                    <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>{categoryPlatforms[category]?.length || 0} platform{categoryPlatforms[category]?.length === 1 ? "" : "s"}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {categoryPlatforms[category]?.length ? (
@@ -1205,7 +1261,7 @@ function SettingsPageComponent({
           <div className="flex flex-col gap-6 max-w-3xl">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Teams</h1>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Teams</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>View and manage the teams used in subscriptions</p>
               </div>
               <button
@@ -1223,14 +1279,9 @@ function SettingsPageComponent({
                 const identity = getTeamIdentity(team);
                 return (
                   <div key={team} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{team}</p>
-                        <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>Available for subscription assignments</p>
-                      </div>
-                      <span className="px-3 py-1 rounded-full" style={{ background: identity.light, color: identity.color, fontWeight: 700, fontSize: "12px" }}>
-                        Team
-                      </span>
+                    <div>
+                      <p style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{team}</p>
+                      <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>Available for subscription assignments</p>
                     </div>
                   </div>
                 );
@@ -1243,7 +1294,7 @@ function SettingsPageComponent({
           <div className="flex flex-col gap-6 max-w-2xl">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Notifications</h1>
+                <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Notifications</h1>
                 <p style={{ fontSize: "14px", color: "#64748b" }}>Configure renewal reminders and alerts</p>
               </div>
               <button
@@ -1259,7 +1310,7 @@ function SettingsPageComponent({
             <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
               <div className="flex items-center gap-2 mb-5">
                 <Bell size={16} style={{ color: "#6366f1" }} />
-                <h3 style={{ color: "#0f172a" }}>Default Reminders</h3>
+                <h3 style={{ color: "#0f172a", fontWeight: 700 }}>Default Reminders</h3>
               </div>
               <div className="flex flex-col gap-4">
                 {[
@@ -1288,7 +1339,7 @@ function SettingsPageComponent({
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Bell size={16} style={{ color: "#6366f1" }} />
-                  <h3 style={{ color: "#0f172a" }}>Reminder Runner</h3>
+                  <h3 style={{ color: "#0f172a", fontWeight: 700 }}>Reminder Runner</h3>
                 </div>
                 <button
                   onClick={runReminderCheck}
@@ -1315,7 +1366,7 @@ function SettingsPageComponent({
               <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
                 <div className="flex items-center gap-2 mb-4">
                   <Bell size={16} style={{ color: "#10b981" }} />
-                  <h3 style={{ color: "#0f172a" }}>Custom Notifications</h3>
+                  <h3 style={{ color: "#0f172a", fontWeight: 700 }}>Custom Notifications</h3>
                   <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "11px", fontWeight: 700, background: "rgba(99,102,241,0.1)", color: "#6366f1" }}>{customNotifs.length}</span>
                 </div>
                 <div className="flex flex-col gap-3">
@@ -1348,12 +1399,12 @@ function SettingsPageComponent({
         {section === "currency" && (
           <div className="flex flex-col gap-6 max-w-xl">
             <div>
-              <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Currency Display</h1>
+              <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Currency Display</h1>
               <p style={{ fontSize: "14px", color: "#64748b" }}>Choose your primary and additional display currency</p>
             </div>
 
             <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #e2e8f0" }}>
-              <h3 style={{ color: "#0f172a", marginBottom: "4px" }}>Primary Currency</h3>
+              <h3 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Primary Currency</h3>
               <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "16px" }}>All amounts will be displayed in this currency</p>
               <div className="grid grid-cols-2 gap-3">
                 {([
@@ -1389,7 +1440,7 @@ function SettingsPageComponent({
         {section === "2fa" && (
           <div className="flex flex-col gap-6 max-w-xl">
             <div>
-              <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Two-Factor Authentication</h1>
+              <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Two-Factor Authentication</h1>
               <p style={{ fontSize: "14px", color: "#64748b" }}>Add an extra layer of security to your account</p>
             </div>
 
@@ -1467,10 +1518,15 @@ function SettingsPageComponent({
                         value={emailVerificationCode}
                         onChange={(e) => setEmailVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                         placeholder="000000"
-                        className="flex-1 px-3 py-2.5 rounded-xl outline-none"
-                        style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", letterSpacing: "0.2em", textAlign: "center" }}
-                        onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                        onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                        className="flex-1 px-3 py-2.5 rounded-xl outline-none transition-all"
+                        style={{
+                          border: `1.5px solid ${focusedField === "emailVerCode" ? "#6366f1" : "#e2e8f0"}`,
+                          fontSize: "13px",
+                          letterSpacing: "0.2em",
+                          textAlign: "center"
+                        }}
+                        onFocus={() => setFocusedField("emailVerCode")}
+                        onBlur={() => setFocusedField(null)}
                         maxLength={6}
                         autoComplete="off"
                       />
@@ -1564,10 +1620,14 @@ function SettingsPageComponent({
                           value={verifyCode}
                           onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                           placeholder="Enter 6-digit code"
-                          className="flex-1 px-3 py-2 rounded-xl outline-none"
-                          style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", letterSpacing: "0.2em" }}
-                          onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                          onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                          className="flex-1 px-3 py-2 rounded-xl outline-none transition-all"
+                          style={{
+                            border: `1.5px solid ${focusedField === "googleAuthCode" ? "#6366f1" : "#e2e8f0"}`,
+                            fontSize: "13px",
+                            letterSpacing: "0.2em"
+                          }}
+                          onFocus={() => setFocusedField("googleAuthCode")}
+                          onBlur={() => setFocusedField(null)}
                           maxLength={6}
                         />
                         <button
@@ -1591,7 +1651,7 @@ function SettingsPageComponent({
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
           <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
-              <h2 style={{ color: "#0f172a" }}>{editUserId ? "Edit User" : "Create New User"}</h2>
+              <h2 style={{ color: "#0f172a", fontWeight: 700 }}>{editUserId ? "Edit User" : "Create New User"}</h2>
               <button
                 onClick={() => {
                   setShowCreateUser(false);
@@ -1617,10 +1677,14 @@ function SettingsPageComponent({
                     value={newUser[f.key]}
                     onChange={(e) => setNewUser((p) => ({ ...p, [f.key]: e.target.value }))}
                     placeholder={f.placeholder}
-                    className="w-full px-3 py-2.5 rounded-xl outline-none"
-                    style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
-                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
+                    style={{
+                      border: `1.5px solid ${focusedField === `createUser_${f.key}` ? "#6366f1" : "#e2e8f0"}`,
+                      fontSize: "13px",
+                      color: "#0f172a"
+                    }}
+                    onFocus={() => setFocusedField(`createUser_${f.key}`)}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </div>
               ))}
@@ -1680,15 +1744,15 @@ function SettingsPageComponent({
                       onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
                       placeholder={editUserId ? "Leave blank to keep current" : "Set a login password or click Generate"}
                       autoComplete="new-password"
-                      className="w-full px-3 py-2.5 rounded-xl outline-none"
+                      className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
                       style={{
-                        border: `1.5px solid ${newUser.password ? "#6366f1" : "#e2e8f0"}`,
+                        border: `1.5px solid ${focusedField === "createUser_password" || newUser.password ? "#6366f1" : "#e2e8f0"}`,
                         fontSize: "13px",
                         color: "#0f172a",
                         paddingRight: "72px",
                       }}
-                      onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                      onBlur={(e) => (e.target.style.borderColor = newUser.password ? "#6366f1" : "#e2e8f0")}
+                      onFocus={() => setFocusedField("createUser_password")}
+                      onBlur={() => setFocusedField(null)}
                     />
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                       {/* Copy button */}
@@ -1781,7 +1845,7 @@ function SettingsPageComponent({
           <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)", maxHeight: "90vh" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
               <div>
-                <h2 style={{ color: "#0f172a" }}>Add Notification</h2>
+                <h2 style={{ color: "#0f172a", fontWeight: 700 }}>Add Notification</h2>
                 <p style={{ fontSize: "13px", color: "#94a3b8" }}>Set a custom renewal alert</p>
               </div>
               <button onClick={() => setShowAddNotif(false)} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9", color: "#64748b" }}>
@@ -1796,10 +1860,14 @@ function SettingsPageComponent({
                   onChange={(e) => setNotifForm((p) => ({ ...p, email: e.target.value }))}
                   placeholder="e.g. you@example.com"
                   type="email"
-                  className="w-full px-3 py-2.5 rounded-xl outline-none"
-                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
-                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
+                  style={{
+                    border: `1.5px solid ${focusedField === "notif_email" ? "#6366f1" : "#e2e8f0"}`,
+                    fontSize: "13px",
+                    color: "#0f172a"
+                  }}
+                  onFocus={() => setFocusedField("notif_email")}
+                  onBlur={() => setFocusedField(null)}
                 />
               </div>
               <div>
@@ -1847,7 +1915,7 @@ function SettingsPageComponent({
           <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
               <div>
-                <h2 style={{ color: "#0f172a" }}>Create Category</h2>
+                <h2 style={{ color: "#0f172a", fontWeight: 700 }}>Create Category</h2>
                 <p style={{ fontSize: "13px", color: "#94a3b8" }}>Add a new category for subscriptions</p>
               </div>
               <button
@@ -1870,10 +1938,14 @@ function SettingsPageComponent({
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   placeholder="e.g. Marketing Tools"
-                  className="w-full px-3 py-2.5 rounded-xl outline-none"
-                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
-                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
+                  style={{
+                    border: `1.5px solid ${focusedField === "category_name" ? "#6366f1" : "#e2e8f0"}`,
+                    fontSize: "13px",
+                    color: "#0f172a"
+                  }}
+                  onFocus={() => setFocusedField("category_name")}
+                  onBlur={() => setFocusedField(null)}
                 />
               </div>
               <div className="flex gap-3">
@@ -1904,7 +1976,7 @@ function SettingsPageComponent({
           <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid #e2e8f0" }}>
               <div>
-                <h2 style={{ color: "#0f172a" }}>Add Team</h2>
+                <h2 style={{ color: "#0f172a", fontWeight: 700 }}>Add Team</h2>
                 <p style={{ fontSize: "13px", color: "#94a3b8" }}>Create a new team for subscriptions</p>
               </div>
               <button
@@ -1927,10 +1999,14 @@ function SettingsPageComponent({
                   value={newTeamName}
                   onChange={(e) => setNewTeamName(e.target.value)}
                   placeholder="e.g. Finance"
-                  className="w-full px-3 py-2.5 rounded-xl outline-none"
-                  style={{ border: "1.5px solid #e2e8f0", fontSize: "13px", color: "#0f172a" }}
-                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  className="w-full px-3 py-2.5 rounded-xl outline-none transition-all"
+                  style={{
+                    border: `1.5px solid ${focusedField === "team_name" ? "#6366f1" : "#e2e8f0"}`,
+                    fontSize: "13px",
+                    color: "#0f172a"
+                  }}
+                  onFocus={() => setFocusedField("team_name")}
+                  onBlur={() => setFocusedField(null)}
                 />
               </div>
               <div className="flex gap-3">
@@ -1963,7 +2039,7 @@ function SettingsPageComponent({
               <div className="mx-auto mb-4 w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(248,113,113,0.14)" }}>
                 <AlertTriangle size={28} style={{ color: "#ef4444" }} />
               </div>
-              <h2 style={{ color: "#0f172a", fontSize: "22px", marginBottom: "8px" }}>Delete?</h2>
+              <h2 style={{ color: "#0f172a", fontSize: "22px", marginBottom: "8px", fontWeight: 700 }}>Delete?</h2>
               <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px" }}>
                 Are you sure you want to DELETE USER {deleteTargetName ? `"${deleteTargetName}"` : "this user"}?
               </p>

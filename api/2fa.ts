@@ -1,10 +1,34 @@
 import { firestore } from "./_firebaseAdmin.js";
 import { randomBytes } from "crypto";
 import { z } from "zod";
+import nodemailer from "nodemailer";
 
 const SETTINGS_DOC_ID = "app";
 const SETTINGS_COLLECTION = "settings";
 const VERIFICATION_CODES_COLLECTION = "verification_codes";
+
+// Initialize Nodemailer transporter for Brevo/SendGrid SMTP
+const createMailTransporter = () => {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+
+  if (!host || !user || !pass) {
+    console.warn("[2FA] SMTP credentials not configured. Emails will not be sent.");
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: {
+      user,
+      pass,
+    },
+  });
+};
 
 // Validation schemas
 const sendOtpSchema = z.object({
@@ -113,15 +137,50 @@ async function cleanupExpiredCodes(): Promise<void> {
   }
 }
 
-function sendVerificationEmail(email: string, code: string, purpose: string): boolean {
-  // In production, use SendGrid, AWS SES, or Nodemailer
-  // For now, log it (in demo mode) - DO NOT log the actual code
-  console.log(`[2FA] ${purpose} code generated for ${email}`);
-  console.log(`[2FA] Code will expire in ${purpose === "setup" ? 10 : 5} minutes`);
+async function sendVerificationEmail(
+  email: string,
+  code: string,
+  purpose: string
+): Promise<boolean> {
+  const transporter = createMailTransporter();
 
-  // Return true to indicate email would be sent
-  // In production, return false if actual email send fails
-  return true;
+  if (!transporter) {
+    console.error(`[2FA] Cannot send ${purpose} email: SendGrid API key not configured`);
+    return false;
+  }
+
+  const expiryMinutes = purpose === "setup" ? 10 : 5;
+  const subject = purpose === "Login OTP" ? "Your 2FA Login Code" : "Enable 2FA - Verification Code";
+  const htmlContent = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #333;">Your ${subject}</h2>
+      <p style="font-size: 16px; color: #666;">Your verification code is:</p>
+      <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+        <code style="font-size: 32px; letter-spacing: 4px; font-weight: bold; color: #333;">${code}</code>
+      </div>
+      <p style="font-size: 14px; color: #999;">
+        This code will expire in ${expiryMinutes} minutes.
+      </p>
+      <p style="font-size: 12px; color: #bbb;">
+        If you didn't request this code, please ignore this email.
+      </p>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || "noreply@webomindapps.com",
+      to: email,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`[2FA] ${purpose} email sent to ${email}`);
+    return true;
+  } catch (error) {
+    console.error(`[2FA] Failed to send ${purpose} email to ${email}:`, error);
+    return false;
+  }
 }
 
 export default async function handler(req: any, res: any) {
@@ -152,29 +211,29 @@ export default async function handler(req: any, res: any) {
         }
 
         try {
-        const code = generateVerificationCode();
+          const code = generateVerificationCode();
 
-        // Store in Firestore (persists across restarts)
-        await storeVerificationCode(email, code, "setup", 10);
+          // Store in Firestore (persists across restarts)
+          await storeVerificationCode(email, code, "setup", 10);
 
-        // Log without the code
-        console.log(`[2FA-Setup] Verification code generated for ${email}`);
+          // Log without the code
+          console.log(`[2FA-Setup] Verification code generated for ${email}`);
 
-        // Send email (in production)
-        const sent = sendVerificationEmail(email, code, "2FA Setup");
+          // Send email in the background (non-blocking) - don't await
+          // Fire-and-forget with error logging
+          sendVerificationEmail(email, code, "2FA Setup").catch((error: unknown) => {
+            console.error(`[2FA-Setup] Background email send failed for ${email}:`, error);
+          });
 
-        if (!sent) {
+          // Return immediately after storing code - email sends in background
+          return res.status(200).json({
+            ok: true,
+            message: `Verification code sent to ${email}`,
+          });
+        } catch (error) {
+          console.error("Error sending verification code:", error);
           return res.status(500).json({ message: "Failed to send verification code." });
         }
-
-        return res.status(200).json({
-          ok: true,
-          message: `Verification code sent to ${email}`,
-        });
-      } catch (error) {
-        console.error("Error sending verification code:", error);
-        return res.status(500).json({ message: "Failed to send verification code." });
-      }
     }
 
     // Verify setup code
@@ -227,23 +286,25 @@ export default async function handler(req: any, res: any) {
 
         console.log(`[2FA-Verify] Code verified successfully for ${email}`);
 
-        // Code is valid - save 2FA settings
+        // Code is valid - save 2FA settings AND delete code in parallel (non-blocking)
         const docRef = firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID);
-        await docRef.set(
-          {
-            twoFactorAuth: {
-              email: {
-                enabled: true,
-                email,
-                enabledAt: new Date().toISOString(),
+
+        // Run both operations in parallel for faster response
+        await Promise.all([
+          docRef.set(
+            {
+              twoFactorAuth: {
+                email: {
+                  enabled: true,
+                  email,
+                  enabledAt: new Date().toISOString(),
+                },
               },
             },
-          },
-          { merge: true }
-        );
-
-        // Delete code after successful verification (prevent replay)
-        await deleteVerificationCode(email);
+            { merge: true }
+          ),
+          deleteVerificationCode(email), // Delete code in parallel
+        ]);
 
         return res.status(200).json({
           ok: true,
@@ -272,13 +333,12 @@ export default async function handler(req: any, res: any) {
         // Log without the code
         console.log(`[Login-OTP] OTP generated for ${email}`);
 
-        // Send email
-        const sent = sendVerificationEmail(email, code, "Login OTP");
+        // Send email in the background (non-blocking) - don't await
+        sendVerificationEmail(email, code, "Login OTP").catch((error: unknown) => {
+          console.error(`[Login-OTP] Background email send failed for ${email}:`, error);
+        });
 
-        if (!sent) {
-          return res.status(500).json({ message: "Failed to send OTP." });
-        }
-
+        // Return immediately after storing code - email sends in background
         return res.status(200).json({
           ok: true,
           message: `OTP sent to ${email}`,
@@ -345,16 +405,24 @@ export default async function handler(req: any, res: any) {
     if (action === "disable") {
       try {
         const docRef = firestore.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID);
-        await docRef.set(
-          {
-            twoFactorAuth: {
-              email: {
-                enabled: false,
+
+        // Disable 2FA and cleanup expired codes in parallel (non-blocking)
+        await Promise.all([
+          docRef.set(
+            {
+              twoFactorAuth: {
+                email: {
+                  enabled: false,
+                },
               },
             },
-          },
-          { merge: true }
-        );
+            { merge: true }
+          ),
+          // Cleanup expired codes in background
+          cleanupExpiredCodes().catch((error) => {
+            console.error("[2FA] Cleanup error during disable:", error);
+          }),
+        ]);
 
         console.log("[2FA] Email authentication disabled");
 

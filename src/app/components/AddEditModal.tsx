@@ -9,6 +9,7 @@ interface AddEditModalProps {
   onClose: () => void;
   categories: Category[];
   teams: Team[];
+  defaultTeam?: Team;
 }
 
 const CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
@@ -24,7 +25,7 @@ interface BrandSearchResult {
 const brandSearchCache = new Map<string, BrandSearchResult[]>();
 let pendingRequest: { query: string; controller: AbortController } | null = null;
 
-export function AddEditModal({ subscription, onSave, onClose, categories, teams }: AddEditModalProps) {
+export function AddEditModal({ subscription, onSave, onClose, categories, teams, defaultTeam }: AddEditModalProps) {
   const [form, setForm] = useState({
     platform: "",
     logoDomain: "",
@@ -41,11 +42,12 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
     accountPassword: "",
     invoiceFileName: "",
     category: "Productivity" as Category,
-    team: "Development" as Team,
+    team: (defaultTeam || "Development") as Team,
     autoPay: false,
     color: "#6366f1",
     logo: "",
     active: true,
+    renewalStatus: undefined as "Paid" | "Failed" | "Cancelled" | undefined,
   });
   const [brandSuggestions, setBrandSuggestions] = useState<BrandSearchResult[]>([]);
   const [brandSearchLoading, setBrandSearchLoading] = useState(false);
@@ -75,6 +77,7 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
         color: subscription.color,
         logo: subscription.logo,
         active: subscription.active,
+        renewalStatus: subscription.renewalStatus,
       });
     }
   }, [subscription]);
@@ -169,10 +172,11 @@ export function AddEditModal({ subscription, onSave, onClose, categories, teams 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.platform || !form.cost || !form.expiryDate || !form.accountHolder || !form.accountEmail) return;
+    const { renewalStatus, ...formData } = form;
     onSave({
-      ...form,
-      cost: parseFloat(form.cost),
-      logo: form.logo || getPlatformIdentity(form.platform).logo,
+      ...formData,
+      cost: parseFloat(formData.cost),
+      logo: formData.logo || getPlatformIdentity(formData.platform).logo,
     });
   };
 

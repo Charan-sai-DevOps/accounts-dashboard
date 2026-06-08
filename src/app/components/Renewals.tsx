@@ -252,7 +252,7 @@ function RenewalsComponent({ subscriptions, onEdit }: RenewalsProps) {
       <div>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-2 h-2 rounded-full" style={{ background: accent }} />
-          <h3 style={{ color: "#0f172a" }}>{title}</h3>
+          <h3 style={{ color: "#0f172a", fontWeight: 700 }}>{title}</h3>
           <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "11px", fontWeight: 600, background: accent + "22", color: accent }}>
             {items.length}
           </span>
@@ -269,7 +269,7 @@ function RenewalsComponent({ subscriptions, onEdit }: RenewalsProps) {
       {/* Header */}
       <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
         <div className="max-w-2xl">
-          <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Renewals</h1>
+          <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Renewals</h1>
           <p style={{ color: "#64748b", fontSize: "14px" }}>Track upcoming and past renewal activity</p>
           <div className="mt-5 inline-flex items-center gap-3 rounded-[16px] bg-slate-100 p-1">
             {[
@@ -443,7 +443,7 @@ function RenewalsComponent({ subscriptions, onEdit }: RenewalsProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)" }}>
           <div className="w-full max-w-md rounded-3xl overflow-hidden bg-white shadow-2xl">
             <div className="p-6">
-              <h2 style={{ color: "#0f172a", fontSize: "20px", marginBottom: "8px" }}>Confirm status update</h2>
+              <h2 style={{ color: "#0f172a", fontSize: "20px", marginBottom: "8px", fontWeight: 700 }}>Confirm status update</h2>
               <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "24px", lineHeight: 1.5 }}>
                 Are you sure you want to mark {pendingStatusChange.sub.platform} as {pendingStatusChange.status.toLowerCase()}?
               </p>

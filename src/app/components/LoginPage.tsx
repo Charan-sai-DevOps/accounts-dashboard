@@ -1,9 +1,16 @@
 import { useState, type FormEvent } from "react";
-import { Lock, Mail, LogIn, Eye, EyeOff, ArrowRight, Shield } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Shield, Zap, CreditCard, BarChart2, Bell } from "lucide-react";
 
 interface LoginPageProps {
   onLogin: (email: string, password: string, prefetched?: { role: string; user?: { name?: string; email?: string } }) => Promise<void>;
 }
+
+const features = [
+  { icon: <CreditCard size={16} />, text: "Track all subscriptions in one place" },
+  { icon: <BarChart2 size={16} />, text: "Spending analytics & visual reports" },
+  { icon: <Bell size={16} />, text: "Smart renewal reminders & alerts" },
+];
+
 
 const autofillStyle = `
   input:-webkit-autofill,
@@ -11,12 +18,49 @@ const autofillStyle = `
   input:-webkit-autofill:focus,
   input:-webkit-autofill:active {
     -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
-    -webkit-text-fill-color: #1a1f3a !important;
-    caret-color: #2563eb;
+    -webkit-text-fill-color: #0f172a !important;
+    caret-color: #f97316;
     transition: background-color 5000s ease-in-out 0s;
   }
   input:-webkit-autofill::first-line {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+
+  @keyframes slideInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(249, 115, 22, 0.5); }
+  }
+
+  .animate-slide-up {
+    animation: slideInUp 0.6s ease-out forwards;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.8s ease-out;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  .input-focus-glow:focus-within {
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1);
   }
 `;
 
@@ -29,6 +73,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [showOtpVerification, setShowOtpVerification] = useState(false);
   const [otp, setOtp] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
+  const [otpFocused, setOtpFocused] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -103,51 +150,61 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   if (showOtpVerification) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-8" style={{ background: "#f8fafc" }}>
+      <div className="flex h-screen" style={{ background: "#f8fafc" }}>
         <style>{autofillStyle}</style>
-        <div className="w-full max-w-md">
-          {/* Header with logo */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl mb-4" style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)" }}>
-              <Shield size={28} style={{ color: "#ffffff" }} />
-            </div>
-            <h1 style={{ color: "#1a1f3a", fontSize: "28px", fontWeight: 700, marginBottom: "8px" }}>Verify OTP</h1>
-            <p style={{ color: "#64748b", fontSize: "14px", lineHeight: "1.5" }}>Enter the verification code sent to your email</p>
-          </div>
 
-          {/* Form Card */}
+        {/* OTP verification modal overlay */}
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-50" style={{ background: "rgba(0,0,0,0.5)" }}>
           <div style={{
             background: "#ffffff",
-            borderRadius: "12px",
-            padding: "32px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.05)",
-            border: "1px solid #e2e8f0"
+            borderRadius: "16px",
+            padding: "36px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 20px 50px rgba(0,0,0,0.2)",
+            border: "1px solid #e0e7ff",
+            maxWidth: "400px",
+            width: "100%"
           }}>
-            <form onSubmit={handleOtpSubmit} className="flex flex-col gap-5">
+            {/* Header with logo */}
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl mb-4" style={{
+                background: "linear-gradient(135deg, #6366f1, #8b5cf6)"
+              }}>
+                <Shield size={28} style={{ color: "#ffffff" }} />
+              </div>
+              <h1 style={{ color: "#0f172a", fontSize: "28px", fontWeight: 800, marginBottom: "8px" }}>Verify OTP</h1>
+              <p style={{ color: "#64748b", fontSize: "14px", fontWeight: 500 }}>Enter the code sent to your email</p>
+            </div>
+
+            <form onSubmit={handleOtpSubmit} className="flex flex-col gap-6">
               <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: "#1a1f3a" }}>6-Digit Code</label>
+                <label className="block text-sm font-semibold mb-2.5" style={{ color: "#0f172a" }}>6-Digit Code</label>
                 <input
                   value={otp}
                   onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
                   type="text"
-                  className="w-full px-4 py-3 rounded-lg text-center tracking-widest text-xl font-semibold transition-all"
+                  className="w-full px-4 py-3 rounded-lg text-center tracking-widest text-xl font-bold transition-all duration-300"
                   placeholder="000000"
                   autoComplete="off"
                   maxLength={6}
                   style={{
-                    color: "#1a1f3a",
-                    border: "2px solid #e2e8f0",
-                    fontSize: "24px",
-                    letterSpacing: "0.25em"
+                    color: "#0f172a",
+                    border: `2px solid ${otpFocused ? "#6366f1" : "#e5e7eb"}`,
+                    background: otpFocused ? "#f5f3ff" : "#fafafa",
+                    letterSpacing: "0.3em"
                   }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = "#2563eb"}
-                  onBlur={(e) => e.currentTarget.style.borderColor = "#e2e8f0"}
+                  onFocus={() => setOtpFocused(true)}
+                  onBlur={() => setOtpFocused(false)}
                 />
-                <p style={{ fontSize: "12px", color: "#64748b", marginTop: "8px" }}>Code sent to {email}</p>
+                <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "8px", fontWeight: 500 }}>Code sent to <span style={{ color: "#0f172a", fontWeight: 600 }}>{email}</span></p>
               </div>
 
               {error && (
-                <div className="rounded-lg px-4 py-3 text-sm" style={{ background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca" }}>
+                <div className="rounded-lg px-4 py-3 text-sm" style={{
+                  background: "#fee2e2",
+                  color: "#991b1b",
+                  border: "1px solid #fecaca",
+                  fontWeight: 500
+                }}>
                   {error}
                 </div>
               )}
@@ -155,16 +212,32 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               <button
                 type="submit"
                 disabled={otpLoading || otp.length < 6}
-                className="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2"
+                className="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2"
                 style={{
-                  background: otpLoading || otp.length < 6 ? "#cbd5e1" : "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                  background: otpLoading || otp.length < 6 ? "#cbd5e1" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
                   color: "#ffffff",
                   cursor: otpLoading || otp.length < 6 ? "not-allowed" : "pointer",
-                  boxShadow: otpLoading || otp.length < 6 ? "none" : "0 4px 12px rgba(37, 99, 235, 0.3)"
+                  boxShadow: otpLoading || otp.length < 6 ? "none" : "0 4px 15px rgba(99, 102, 241, 0.3)",
+                  opacity: otpLoading || otp.length < 6 ? 0.6 : 1
                 }}
               >
-                <Shield size={18} />
-                {otpLoading ? "Verifying..." : "Verify Code"}
+                {otpLoading ? (
+                  <>
+                    <span className="inline-block animate-spin" style={{
+                      width: "16px",
+                      height: "16px",
+                      border: "2px solid rgba(255,255,255,0.3)",
+                      borderTop: "2px solid #ffffff",
+                      borderRadius: "50%"
+                    }} />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <Shield size={18} />
+                    Verify Code
+                  </>
+                )}
               </button>
 
               <button
@@ -174,8 +247,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   setOtp("");
                   setError(null);
                 }}
-                className="text-center text-sm transition-colors font-medium"
-                style={{ color: "#2563eb", textDecoration: "none" }}
+                className="text-center text-sm font-semibold py-2 transition-all duration-300"
+                style={{ color: "#6366f1", background: "none", border: "none", cursor: "pointer" }}
               >
                 ← Back to login
               </button>
@@ -187,183 +260,188 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: "#f8fafc" }}>
+    <div className="flex h-screen" style={{ background: "#f8fafc" }}>
       <style>{autofillStyle}</style>
 
-      {/* Left Side - Hero Section */}
-      <div className="hidden lg:flex flex-col justify-center px-12 py-12 flex-1" style={{
-        background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-      }}>
-        <div style={{ maxWidth: "450px" }}>
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-8" style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(10px)" }}>
-            <LogIn size={32} style={{ color: "#ffffff" }} />
+      {/* Left panel - hidden on mobile */}
+      <div
+        className="hidden lg:flex flex-col justify-between w-1/2 flex-shrink-0 p-10 relative overflow-hidden"
+        style={{ background: "linear-gradient(160deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%)" }}
+      >
+        {/* Background decoration */}
+        <div style={{ position: "absolute", top: "-80px", right: "-80px", width: "300px", height: "300px", borderRadius: "50%", background: "rgba(99,102,241,0.12)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: "60px", left: "-60px", width: "200px", height: "200px", borderRadius: "50%", background: "rgba(139,92,246,0.1)", pointerEvents: "none" }} />
+
+        {/* Logo */}
+        <div className="flex items-center gap-3 relative z-10">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+            <Zap size={20} className="text-white" />
           </div>
+          <div>
+            <p className="text-white" style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1.2 }}>Tracker</p>
+            <p style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.2 }}>Subscription Manager</p>
+          </div>
+        </div>
 
-          <h2 style={{ color: "#ffffff", fontSize: "36px", fontWeight: 700, marginBottom: "16px", lineHeight: 1.2 }}>
-            Manage Your Subscriptions with Ease
-          </h2>
-
-          <p style={{ color: "rgba(255,255,255,0.9)", fontSize: "16px", lineHeight: 1.6, marginBottom: "32px" }}>
-            Track, organize, and optimize all your subscription billing in one centralized dashboard. Never miss a renewal date again.
+        {/* Middle content - hero text and features */}
+        <div className="relative z-10 flex-1 flex flex-col justify-center">
+          {/* <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-5" style={{ background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.3)", width: "fit-content" }}>
+            <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#818cf8" }} />
+            <span style={{ fontSize: "12px", color: "#a5b4fc", fontWeight: 600 }}>Trusted by 2,000+ teams</span>
+          </div> */}
+          <h1 style={{ fontSize: "32px", fontWeight: 800, color: "white", lineHeight: 1.15, marginBottom: "12px" }}>
+            Take control of every subscription
+          </h1>
+          <p style={{ fontSize: "18px", color: "#94a3b8", lineHeight: 1.6, marginBottom: "40px" }}>
+            One dashboard to manage billing, track renewals, and eliminate surprise charges across all your platforms.
           </p>
 
-          <div className="space-y-4">
-            {[
-              "Real-time subscription tracking",
-              "Automated renewal reminders",
-              "Comprehensive cost analytics"
-            ].map((feature, idx) => (
-              <div key={idx} className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-1">
-                  <ArrowRight size={18} style={{ color: "#ffffff" }} />
+          {/* Feature list */}
+          <div className="flex flex-col gap-2.5 mb-8">
+            {features.map((f) => (
+              <div key={f.text} className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(99,102,241,0.25)", color: "#818cf8" }}>
+                  {f.icon}
                 </div>
-                <p style={{ color: "rgba(255,255,255,0.95)", fontSize: "14px" }}>{feature}</p>
+                <span style={{ fontSize: "18px", color: "#cbd5e1" }}>{f.text}</span>
               </div>
             ))}
           </div>
+
+        </div>
+
+        {/* Bottom stat row */}
+        <div className="flex items-center gap-8 relative z-10">
+          {[
+            { value: "14+", label: "Platforms" },
+            { value: "10+", label: "Categories" },
+            { value: "100%", label: "Visibility" },
+          ].map((s) => (
+            <div key={s.label}>
+              <p style={{ fontSize: "24px", fontWeight: 800, color: "white" }}>{s.value}</p>
+              <p style={{ fontSize: "18px", color: "#64748b" }}>{s.label}</p>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Right Side - Login Form */}
-      <div className="w-full lg:w-[500px] flex flex-col justify-center px-6 sm:px-8 lg:px-12 py-8 sm:py-12">
-        <div style={{ maxWidth: "400px", margin: "0 auto", width: "100%" }}>
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl mb-4" style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)" }}>
-              <LogIn size={28} style={{ color: "#ffffff" }} />
+      {/* Right panel - form */}
+      <div className="w-full lg:w-1/2 flex flex-col justify-center px-6 sm:px-8 lg:px-12 relative overflow-auto">
+        <div style={{ maxWidth: "400px", margin: "0 auto", width: "100%", position: "relative", zIndex: 10 }}>
+          {/* Mobile logo */}
+          <div className="flex items-center gap-3 mb-8 lg:hidden">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+              <Zap size={18} className="text-white" />
             </div>
-            <h1 style={{ color: "#1a1f3a", fontSize: "24px", fontWeight: 700 }}>Subscription Dashboard</h1>
+            <p style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>Tracker</p>
           </div>
 
           {/* Login Header */}
           <div className="mb-8">
-            <h2 style={{ color: "#1a1f3a", fontSize: "28px", fontWeight: 700, marginBottom: "8px" }}>Welcome Back</h2>
-            <p style={{ color: "#64748b", fontSize: "14px" }}>Sign in to your account to continue</p>
+            <h2 style={{ fontSize: "34px", fontWeight: 800, color: "#0f172a", marginBottom: "8px" }}>
+              Welcome back 👋
+            </h2>
+            <p style={{ fontSize: "18px", color: "#64748b" }}>Sign in to your account to continue</p>
           </div>
 
           {/* Form Card */}
           <div style={{
             background: "#ffffff",
-            borderRadius: "12px",
+            borderRadius: "16px",
             padding: "32px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.05)",
-            border: "1px solid #e2e8f0"
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 10px 30px rgba(0,0,0,0.1)",
+            border: "1px solid #e0e7ff"
           }}>
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-              {/* Email Field */}
+              {/* Email */}
               <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: "#1a1f3a" }}>Email Address</label>
-                <div className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all" style={{
-                  border: "2px solid #e2e8f0",
-                  background: "#f8fafc"
-                }}
-                  onFocus={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "#2563eb";
-                    (e.currentTarget as HTMLElement).style.background = "#ffffff";
+                <label style={{ fontSize: "16px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "8px" }}>
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-3 rounded-xl outline-none transition-all"
+                  style={{
+                    border: `1.5px solid ${emailFocused ? "#6366f1" : "#e2e8f0"}`,
+                    fontSize: "16px",
+                    color: "#0f172a",
+                    background: "white",
                   }}
-                  onBlur={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0";
-                    (e.currentTarget as HTMLElement).style.background = "#f8fafc";
-                  }}
-                >
-                  <Mail size={18} style={{ color: "#64748b", flexShrink: 0 }} />
-                  <input
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    type="email"
-                    className="w-full bg-transparent outline-none text-base"
-                    placeholder="your.email@company.com"
-                    style={{ color: "#1a1f3a" }}
-                    required
-                  />
-                </div>
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
+                />
               </div>
 
-              {/* Password Field */}
+              {/* Password */}
               <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: "#1a1f3a" }}>Password</label>
-                <div className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all" style={{
-                  border: "2px solid #e2e8f0",
-                  background: "#f8fafc"
-                }}
-                  onFocus={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "#2563eb";
-                    (e.currentTarget as HTMLElement).style.background = "#ffffff";
-                  }}
-                  onBlur={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0";
-                    (e.currentTarget as HTMLElement).style.background = "#f8fafc";
-                  }}
-                >
-                  <Lock size={18} style={{ color: "#64748b", flexShrink: 0 }} />
+                <label style={{ fontSize: "16px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "8px" }}>Password</label>
+                <div className="relative">
                   <input
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
                     type={passwordVisible ? "text" : "password"}
-                    className="w-full bg-transparent outline-none text-base"
-                    placeholder="Enter your password"
-                    style={{ color: "#1a1f3a" }}
-                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••"
+                    className="w-full pl-4 pr-11 py-3 rounded-xl outline-none transition-all"
+                    style={{
+                      border: `1.5px solid ${passwordFocused ? "#6366f1" : "#e2e8f0"}`,
+                      fontSize: "16px",
+                      color: "#0f172a",
+                      background: "white",
+                    }}
+                    onFocus={() => setPasswordFocused(true)}
+                    onBlur={() => setPasswordFocused(false)}
                   />
                   <button
                     type="button"
-                    onClick={() => setPasswordVisible(!passwordVisible)}
-                    className="flex-shrink-0 transition-colors hover:opacity-70"
-                    style={{ color: "#64748b" }}
+                    onClick={() => setPasswordVisible((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+                    style={{ color: "#94a3b8", background: "transparent" }}
                   >
-                    {passwordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
                   </button>
                 </div>
               </div>
 
-              {/* Error Message */}
+              {/* Error */}
               {error && (
-                <div className="rounded-lg px-4 py-3 text-sm" style={{
-                  background: "#fee2e2",
-                  color: "#dc2626",
-                  border: "1px solid #fecaca",
-                  lineHeight: 1.5
-                }}>
-                  {error}
+                <div className="px-4 py-3 rounded-xl" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                  <p style={{ fontSize: "13px", color: "#ef4444" }}>{error}</p>
                 </div>
               )}
 
-              {/* Submit Button */}
+              {/* Submit */}
               <button
                 type="submit"
-                disabled={loading || !email || !password}
-                className="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2"
+                disabled={loading}
+                className="w-full py-3 rounded-xl text-white flex items-center justify-center gap-2 transition-all"
                 style={{
-                  background: loading || !email || !password ? "#cbd5e1" : "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                  color: "#ffffff",
-                  cursor: loading || !email || !password ? "not-allowed" : "pointer",
-                  boxShadow: loading || !email || !password ? "none" : "0 4px 12px rgba(37, 99, 235, 0.3)"
+                  background: loading ? "#a5b4fc" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  boxShadow: loading ? "none" : "0 4px 20px rgba(99,102,241,0.4)",
+                  cursor: loading ? "not-allowed" : "pointer",
                 }}
               >
                 {loading ? (
                   <>
-                    <span className="inline-block animate-spin"></span>
-                    Signing in...
+                    <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    Signing in…
                   </>
                 ) : (
                   <>
-                    <LogIn size={18} />
                     Sign In
+                    <ArrowRight size={17} />
                   </>
                 )}
               </button>
-
-              {/* Footer Text */}
-              <p style={{ textAlign: "center", fontSize: "13px", color: "#64748b" }}>
-                Secure login powered by end-to-end encryption
-              </p>
             </form>
-          </div>
 
-          {/* Security Badge */}
-          <div className="mt-6 flex items-center justify-center gap-2" style={{ color: "#64748b", fontSize: "13px" }}>
-            <Shield size={16} />
-            <span>Enterprise-grade security</span>
           </div>
         </div>
       </div>

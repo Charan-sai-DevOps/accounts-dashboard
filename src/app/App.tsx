@@ -11,7 +11,8 @@ import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { Subscription, getDaysUntilExpiry, getNextExpiryDate, DEFAULT_CATEGORIES, DEFAULT_TEAMS, Category, Team, sanitizeSubscriptions } from "./data/subscriptions";
 // import { db } from "../firebase";
-// import { collection, doc, onSnapshot, addDoc, setDoc, deleteDoc } from "firebase/firestore";
+// import { collection, doc, onSnapshot, addDoc,
+//  setDoc, deleteDoc } from "firebase/firestore";
 
 type Page = "dashboard" | "subscriptions" | "reports" | "renewals" | "settings";
 type UserRole = "Admin" | "Member" | "Viewer";
@@ -96,20 +97,14 @@ export default function App() {
 
     const loadData = async () => {
       try {
-        // Always fetch fresh from Firestore on load — never skip based on cache
-        // In-memory cache is only used to deduplicate calls within the same session
-        const requests: Promise<Response>[] = [
-          fetch("/api/subscriptions", { signal: controller.signal }),
-        ];
-
-        if (currentUserRole === "Admin") {
-          // Only skip if cache is fresh within this session (not across page refreshes)
-          if (!(settingsCache && Date.now() - settingsCacheTime < SETTINGS_CACHE_TTL)) {
-            requests.push(fetch("/api/settings", { signal: controller.signal }));
-          }
+        // Priority 1: Load subscriptions immediately (don't block on settings)
+        let subsResponse: Response;
+        try {
+          subsResponse = await fetch("/api/subscriptions", { signal: controller.signal });
+        } catch (err) {
+          if ((err as Error).name !== "AbortError") throw err;
+          return;
         }
-
-        const [subsResponse, settingsResponse] = await Promise.all(requests);
 
         if (!subsResponse.ok) {
           throw new Error(`Failed to fetch subscriptions: ${subsResponse.status}`);
@@ -117,42 +112,55 @@ export default function App() {
         const data = sanitizeSubscriptions(await subsResponse.json());
         setSubscriptions(data);
         setError(null);
+        setLoading(false); // Show page with subscriptions immediately
 
-        if (settingsResponse && settingsResponse.ok) {
-          const settingsData = await settingsResponse.json();
-          settingsCache = settingsData;
-          settingsCacheTime = Date.now();
-
-          if (settingsData?.profile) {
-            setProfile(settingsData.profile);
+        // Priority 2: Load settings asynchronously (doesn't block page load)
+        if (currentUserRole === "Admin") {
+          // Only skip if cache is fresh within this session
+          if (!(settingsCache && Date.now() - settingsCacheTime < SETTINGS_CACHE_TTL)) {
             try {
-              localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(settingsData.profile));
-            } catch {}
-          }
+              const settingsResponse = await fetch("/api/settings", { signal: controller.signal });
+              if (settingsResponse.ok) {
+                const settingsData = await settingsResponse.json();
+                settingsCache = settingsData;
+                settingsCacheTime = Date.now();
 
-          // Sync categories from Firestore — overwrite localStorage seed with live data
-          if (Array.isArray(settingsData?.customCategories)) {
-            const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...settingsData.customCategories])) as Category[];
-            setCategories(merged);
-            try { localStorage.setItem("customCategories", JSON.stringify(settingsData.customCategories)); } catch {}
-          }
+                if (settingsData?.profile) {
+                  setProfile(settingsData.profile);
+                  try {
+                    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(settingsData.profile));
+                  } catch {}
+                }
 
-          // Sync teams from Firestore — overwrite localStorage seed with live data
-          if (Array.isArray(settingsData?.customTeams)) {
-            const merged = Array.from(new Set([...DEFAULT_TEAMS, ...settingsData.customTeams]));
-            setTeams(merged);
-            try { localStorage.setItem("customTeams", JSON.stringify(settingsData.customTeams)); } catch {}
+                // Sync categories from Firestore — overwrite localStorage seed with live data
+                if (Array.isArray(settingsData?.customCategories)) {
+                  const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...settingsData.customCategories])) as Category[];
+                  setCategories(merged);
+                  try { localStorage.setItem("customCategories", JSON.stringify(settingsData.customCategories)); } catch {}
+                }
+
+                // Sync teams from Firestore — overwrite localStorage seed with live data
+                if (Array.isArray(settingsData?.customTeams)) {
+                  const merged = Array.from(new Set([...DEFAULT_TEAMS, ...settingsData.customTeams]));
+                  setTeams(merged);
+                  try { localStorage.setItem("customTeams", JSON.stringify(settingsData.customTeams)); } catch {}
+                }
+              }
+            } catch (err) {
+              if ((err as Error).name !== "AbortError") {
+                console.warn("Settings load deferred — will retry on settings page", err);
+              }
+            }
+          } else if (settingsCache?.profile) {
+            setProfile(settingsCache.profile);
           }
-        } else if (settingsCache?.profile) {
-          setProfile(settingsCache.profile);
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
-          console.error("Failed to load data:", err);
+          console.error("Failed to load subscriptions:", err);
           setError(err instanceof Error ? err.message : String(err));
+          setLoading(false);
         }
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -326,7 +334,7 @@ export default function App() {
     }
   }, []);
 
-  const handleCreateCategory = useCallback((category: string) => {
+  const handleCreateCategory = useCallback(async (category: string) => {
     const trimmed = category.trim();
     if (!trimmed) return;
     setCategories((prev) => {
@@ -335,19 +343,23 @@ export default function App() {
       const custom = next.filter((item) => !DEFAULT_CATEGORIES.includes(item));
       // Persist to localStorage (instant seed) and Firestore (source of truth)
       try { localStorage.setItem("customCategories", JSON.stringify(custom)); } catch {}
-      fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customCategories: custom }),
-      }).catch(console.warn);
       // Invalidate cache so next load gets fresh data
       settingsCache = null;
       settingsCacheTime = 0;
       return next;
     });
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customCategories: category.trim() }),
+      });
+    } catch (error) {
+      console.error("Failed to persist category:", error);
+    }
   }, []);
 
-  const handleCreateTeam = useCallback((team: string) => {
+  const handleCreateTeam = useCallback(async (team: string) => {
     const trimmed = team.trim();
     if (!trimmed) return;
     setTeams((prev) => {
@@ -356,16 +368,20 @@ export default function App() {
       const custom = next.filter((item) => !DEFAULT_TEAMS.includes(item));
       // Persist to localStorage (instant seed) and Firestore (source of truth)
       try { localStorage.setItem("customTeams", JSON.stringify(custom)); } catch {}
-      fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customTeams: custom }),
-      }).catch(console.warn);
       // Invalidate cache so next load gets fresh data
       settingsCache = null;
       settingsCacheTime = 0;
       return next;
     });
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customTeams: team.trim() }),
+      });
+    } catch (error) {
+      console.error("Failed to persist team:", error);
+    }
   }, []);
 
   const handleUpdateProfile = useCallback(async (updatedProfile: typeof profile) => {
@@ -415,7 +431,7 @@ export default function App() {
     setSidebarOpen(false);
   }, []);
 
-  const processAutopayRenewals = async () => {
+  const processAutopayRenewals = useCallback(async () => {
     if (autopayProcessingRef.current || subscriptions.length === 0) return;
 
     const dueAutopaySubscriptions = subscriptions.filter(
@@ -437,7 +453,7 @@ export default function App() {
     } finally {
       autopayProcessingRef.current = false;
     }
-  };
+  }, [subscriptions, handleEdit]);
 
   useEffect(() => {
     if (loading) return;
@@ -450,7 +466,7 @@ export default function App() {
     }, 5 * 60 * 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [subscriptions]);
+  }, [processAutopayRenewals]);
 
   if (!isAuthenticated) {
     return <LoginPage onLogin={handleLogin} />;

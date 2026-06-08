@@ -40,32 +40,47 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 15;
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [addTeamContext, setAddTeamContext] = useState<Team | null>(null);
+  const [showRowsMenu, setShowRowsMenu] = useState(false);
   const { getActiveLogoSrc, handleLogoError } = usePlatformLogo();
 
   const filtered = useMemo(() => {
+    if (!subscriptions.length) return [];
+
+    const term = debouncedSearch.toLowerCase();
+    const hasDateFilter = purchaseFrom || purchaseTo;
+    const purchaseFromDate = purchaseFrom ? new Date(purchaseFrom).getTime() : 0;
+    const purchaseToDate = purchaseTo ? new Date(purchaseTo).getTime() : 0;
+
     return subscriptions.filter((s) => {
-      const term = debouncedSearch.toLowerCase();
-      const matchSearch =
+      // Fast exit: check cycle filter first (single property check)
+      if (filterCycle !== "All") {
+        if (filterCycle === "Expired") {
+          if (getDaysUntilExpiry(s.expiryDate) >= 0) return false;
+        } else if (s.cycle !== filterCycle) {
+          return false;
+        }
+      }
+
+      // Check date filters (cheaper than string search)
+      if (hasDateFilter) {
+        const purchaseTime = new Date(s.purchaseDate).getTime();
+        if (purchaseFromDate && purchaseTime < purchaseFromDate) return false;
+        if (purchaseToDate && purchaseTime > purchaseToDate) return false;
+      }
+
+      // Only do expensive string operations if other filters pass
+      if (!term) return true;
+
+      return (
         s.platform.toLowerCase().includes(term) ||
         s.plan.toLowerCase().includes(term) ||
         s.buyer.toLowerCase().includes(term) ||
         s.accountHolder?.toLowerCase().includes(term) ||
         s.accountEmail?.toLowerCase().includes(term) ||
-        (s.invoiceFileName || "").toLowerCase().includes(term);
-
-      const daysUntilExpiry = getDaysUntilExpiry(s.expiryDate);
-      const matchCycle =
-        filterCycle === "All"
-          ? true
-          : filterCycle === "Expired"
-          ? daysUntilExpiry < 0
-          : s.cycle === filterCycle;
-
-      const fromOk = !purchaseFrom || new Date(s.purchaseDate) >= new Date(purchaseFrom);
-      const toOk = !purchaseTo || new Date(s.purchaseDate) <= new Date(purchaseTo);
-
-      return matchSearch && matchCycle && fromOk && toOk;
+        (s.invoiceFileName || "").toLowerCase().includes(term)
+      );
     });
   }, [subscriptions, debouncedSearch, filterCycle, purchaseFrom, purchaseTo]);
 
@@ -80,11 +95,11 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
     [activeSubscriptions]
   );
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const paginatedFiltered = useMemo(() => {
-    const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filtered.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-  }, [filtered, currentPage, ITEMS_PER_PAGE]);
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    return filtered.slice(startIdx, startIdx + itemsPerPage);
+  }, [filtered, currentPage, itemsPerPage]);
 
   const orderedTeams = useMemo(
     () => teams.filter((team) =>
@@ -183,7 +198,7 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 style={{ color: "#0f172a", marginBottom: "4px" }}>Subscriptions</h1>
+          <h1 style={{ color: "#0f172a", marginBottom: "4px", fontWeight: 700 }}>Subscriptions</h1>
           <p style={{ color: "#64748b", fontSize: "14px" }}>
             {activeSubscriptions.length} active subscriptions across {uniquePlatformCount} platforms
           </p>
@@ -199,7 +214,7 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
           </button>
           {canWrite && (
             <button
-              onClick={() => { setEditTarget(null); setModalOpen(true); }}
+              onClick={() => { setEditTarget(null); setAddTeamContext(null); setModalOpen(true); }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white transition-all"
               style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", fontSize: "13px", fontWeight: 600, boxShadow: "0 4px 15px rgba(99,102,241,0.35)" }}
             >
@@ -464,42 +479,117 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
         </table>
         </div>
 
-        {filtered.length > ITEMS_PER_PAGE && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200" style={{ background: "#f8fafc" }}>
-            <div style={{ fontSize: "13px", color: "#64748b" }}>
-              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of {filtered.length}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                style={{
-                  border: "1px solid #e2e8f0",
-                  color: currentPage === 1 ? "#cbd5e1" : "#64748b",
-                  background: "white",
-                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                }}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <div style={{ fontSize: "13px", color: "#0f172a", fontWeight: 600, minWidth: "80px", textAlign: "center" }}>
-                Page {currentPage} of {totalPages}
+        {filtered.length > 0 && (
+          <div className="flex flex-col gap-4 px-6 py-4 border-t border-slate-200" style={{ background: "#f8fafc" }}>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span style={{ fontSize: "13px", color: "#64748b" }}>Rows per page</span>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowRowsMenu(!showRowsMenu)}
+                    className="px-3 py-1.5 rounded-lg transition-all flex items-center gap-2"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      background: "white",
+                      border: "1px solid #e2e8f0",
+                      color: "#0f172a",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {itemsPerPage}
+                    <ChevronRight size={14} style={{ transform: showRowsMenu ? "rotate(90deg)" : "rotate(270deg)", transition: "transform 0.2s" }} />
+                  </button>
+                  {showRowsMenu && (
+                    <div
+                      className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-slate-200 z-10"
+                      style={{ minWidth: "100px" }}
+                    >
+                      {[20, 50, 100].map((size) => (
+                        <button
+                          key={size}
+                          onClick={() => {
+                            setItemsPerPage(size);
+                            setCurrentPage(1);
+                            setShowRowsMenu(false);
+                          }}
+                          className="w-full px-4 py-2.5 text-left transition-colors hover:bg-slate-50 first:rounded-t-lg last:rounded-b-lg"
+                          style={{
+                            fontSize: "13px",
+                            color: itemsPerPage === size ? "#6366f1" : "#0f172a",
+                            fontWeight: itemsPerPage === size ? 600 : 500,
+                            background: itemsPerPage === size ? "#f0f4ff" : "transparent",
+                            borderBottom: size !== 100 ? "1px solid #f1f5f9" : "none",
+                          }}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                style={{
-                  border: "1px solid #e2e8f0",
-                  color: currentPage === totalPages ? "#cbd5e1" : "#64748b",
-                  background: "white",
-                  cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-                }}
-              >
-                <ChevronRight size={16} />
-              </button>
+              <div style={{ fontSize: "13px", color: "#64748b" }}>
+                {Math.min((currentPage - 1) * itemsPerPage + 1, filtered.length)} - {Math.min(currentPage * itemsPerPage, filtered.length)} of {filtered.length}
+              </div>
             </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <div style={{ fontSize: "13px", color: "#0f172a", fontWeight: 600 }}>
+                  Page {currentPage} of {totalPages}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      color: currentPage === 1 ? "#cbd5e1" : "#64748b",
+                      background: "white",
+                      cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalPages}
+                    value={currentPage}
+                    onChange={(e) => {
+                      const page = parseInt(e.target.value, 10);
+                      if (!isNaN(page) && page >= 1 && page <= totalPages) {
+                        setCurrentPage(page);
+                      }
+                    }}
+                    className="w-12 px-2 py-1.5 rounded-lg text-center outline-none transition-all"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      border: "1px solid #e2e8f0",
+                      color: "#0f172a",
+                      background: "white",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  />
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      color: currentPage === totalPages ? "#cbd5e1" : "#64748b",
+                      background: "white",
+                      cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -509,7 +599,7 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
           <div className="w-full max-w-2xl overflow-hidden rounded-[28px] bg-white shadow-2xl max-h-[85vh]">
             <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-950">Subscription details</h2>
+                <h2 className="text-lg font-bold text-slate-950">Subscription details</h2>
                 <p className="text-sm text-slate-500">Key information for the selected platform</p>
               </div>
               <button
@@ -683,9 +773,10 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
           <AddEditModal
           subscription={editTarget}
           onSave={handleSave}
-          onClose={() => { setModalOpen(false); setEditTarget(null); }}
+          onClose={() => { setModalOpen(false); setEditTarget(null); setAddTeamContext(null); }}
           categories={categories}
           teams={teams}
+          defaultTeam={addTeamContext || undefined}
         />
       )}
 
@@ -696,7 +787,7 @@ function SubscriptionsComponent({ subscriptions, onAdd, onEdit, onDelete, catego
               <div className="mx-auto mb-4 w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(248,113,113,0.14)" }}>
                 <AlertTriangle size={28} style={{ color: "#ef4444" }} />
               </div>
-              <h2 style={{ color: "#0f172a", fontSize: "22px", marginBottom: "8px" }}>Delete?</h2>
+              <h2 style={{ color: "#0f172a", fontSize: "22px", marginBottom: "8px", fontWeight: 700 }}>Delete?</h2>
               <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px" }}>
                 Are you sure you want to DELETE {deleteTargetName ? `"${deleteTargetName}"` : "this subscription"}?
               </p>
