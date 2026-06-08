@@ -1,4 +1,5 @@
 import { firestore } from "../_firebaseAdmin.js";
+import type { Query } from "firebase-admin/firestore";
 
 const AUDIT_LOGS_COLLECTION = "audit_logs";
 
@@ -277,7 +278,7 @@ export async function queryAuditLogs(
   } = {}
 ): Promise<AuditLogEntry[]> {
   try {
-    let query = firestore.collection(AUDIT_LOGS_COLLECTION);
+    let query: Query = firestore.collection(AUDIT_LOGS_COLLECTION);
 
     if (filters.action) {
       query = query.where("action", "==", filters.action);
