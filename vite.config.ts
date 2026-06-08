@@ -34,9 +34,14 @@ export default defineConfig({
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
+  optimizeDeps: {
+    include: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+  },
+
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
+      external: (id) => id === 'firebase-admin' || id.startsWith('firebase-admin/'),
       output: {
         manualChunks: {
           'mui': ['@mui/material', '@mui/icons-material'],
@@ -67,7 +72,6 @@ export default defineConfig({
             '@radix-ui/react-toggle-group',
             '@radix-ui/react-tooltip',
           ],
-          'firebase': ['firebase', 'firebase-admin'],
         },
       },
     },
