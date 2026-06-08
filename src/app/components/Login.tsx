@@ -13,8 +13,8 @@ const features = [
 
 
 export function LoginPage({ onLogin }: LoginPageProps) {
-  const [email, setEmail] = useState("Charan@webomindapps.com");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
