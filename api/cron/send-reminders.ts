@@ -1,6 +1,6 @@
 import { differenceInCalendarDays, parseISO, isValid } from "date-fns";
 import { firestore } from "../_firebaseAdmin.js";
-import { sendEmail } from "../mail/sendEmail.js";
+import { sendEmail } from "../mail.js";
 
 const SETTINGS_DOC_ID = "app";
 const SETTINGS_COLLECTION = "settings";
