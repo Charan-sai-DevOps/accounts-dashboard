@@ -172,8 +172,7 @@ export function createApiHandler<T extends any[], R>(
         ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
       };
 
-      const result = await handler(req, res, ...args);
-      return result;
+      await handler(req, res, ...args);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
